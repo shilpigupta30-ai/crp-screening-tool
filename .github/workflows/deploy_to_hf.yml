@@ -1,0 +1,25 @@
+name: Deploy to HuggingFace Spaces
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  sync-to-huggingface:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Push to HuggingFace Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          git config user.email "shilpigupta30@gmail.com"
+          git config user.name "GitHub Actions"
+          git remote add hf https://Shilpigupta30:${HF_TOKEN}@huggingface.co/spaces/Shilpigupta30/crp-hel-tool
+          git push hf main --force

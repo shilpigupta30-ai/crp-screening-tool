@@ -1,0 +1,9 @@
+crp-env/
+__pycache__/
+*.pyc
+.env
+*.egg-info/
+dist/
+build/
+.DS_Store
+noaa_rasters/
