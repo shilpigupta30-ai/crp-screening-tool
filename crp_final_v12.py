@@ -738,7 +738,7 @@ if "debug_logs" not in st.session_state:
 
 
 # --- 4. UI Configuration ---
-st.set_page_config(page_title="CRP HEL Screening & CP Recommendation Tool", layout="wide")
+st.set_page_config(page_title="CRP HEL and Wetland Screening Tool (Prototype)", layout="wide")
 
 st.markdown("""
     <style>
@@ -770,7 +770,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🛡️ CRP HEL Screening & CP Recommendation Tool")
+st.title("🛡️ CRP HEL and Wetland Screening Tool (Prototype)")
 
 # --- 5. Sidebar ---
 with st.sidebar:
@@ -935,7 +935,7 @@ with col_map:
     map_output = st_folium(m, width="100%", height=650, key="crp_master_map")
 
     # Drawn polygon handler with normalize + rate limit
-    if map_output.get("all_drawings") and can_make_request():
+    if map_output and map_output.get("all_drawings") and can_make_request():
         last_draw  = map_output["all_drawings"][-1]
         coords     = last_draw["geometry"]["coordinates"][0]
         pts        = [f"{p[0]} {p[1]}" for p in coords]
