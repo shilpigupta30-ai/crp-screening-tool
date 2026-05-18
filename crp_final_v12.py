@@ -1808,11 +1808,11 @@ with col_map:
             st.session_state["center_lon"]        = c_lon
             # Store bounds for wetland assessment (drawn polygon bounds)
             st.session_state["drawn_bounds"]      = [min(lats), min(lons), max(lats), max(lons)]
-            noaa_r, noaa_label = get_noaa_r_factor(c_lat, c_lon, debug=debug_mode)
+            noaa_r, noaa_label = get_noaa_r_factor(c_lat, c_lon)
             if noaa_r:
                 st.session_state["detected_r"] = (noaa_r, noaa_label, "NOAA CDO")
             else:
-                st.session_state["detected_r"] = get_state_r_factor(c_lat, c_lon, debug=debug_mode)
+                st.session_state["detected_r"] = get_state_r_factor(c_lat, c_lon)
 
             _, state_label, _ = st.session_state["detected_r"]
             with st.spinner(f"Fetching soil data ({state_label})..."):
