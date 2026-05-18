@@ -869,11 +869,11 @@ with st.sidebar:
             st.session_state["last_wkt"]          = normalized  # FIXED: sync state
             st.session_state["is_loading"]        = True
             st.session_state["last_request_time"] = time.time()
-            noaa_r, noaa_label = get_noaa_r_factor(center_lat, center_lon, debug=debug_mode)
+            noaa_r, noaa_label = get_noaa_r_factor(center_lat, center_lon, debug=False)
             if noaa_r:
                 st.session_state["detected_r"] = (noaa_r, noaa_label, "NOAA CDO")
             else:
-                st.session_state["detected_r"] = get_state_r_factor(center_lat, center_lon, debug=debug_mode)
+                st.session_state["detected_r"] = get_state_r_factor(center_lat, center_lon, debug=False)
 
             with st.spinner("Fetching soil data from USDA..."):
                 st.session_state["analysis_results"] = fetch_nrcs_data(wkt)
@@ -2109,7 +2109,7 @@ with col_res:
                         bounds = [bounds_list[0][0], bounds_list[0][1], bounds_list[1][0], bounds_list[1][1]]
 
                 # DEBUG: Only show debug info if debug mode enabled
-                if debug_mode:
+                if False:
                     with st.expander("🔍 Wetland Assessment Debug Info"):
                         st.write(f"**WETLAND_FEATURES_AVAILABLE:** {WETLAND_FEATURES_AVAILABLE}")
                         st.write(f"**bounds extracted:** {bounds is not None}")
