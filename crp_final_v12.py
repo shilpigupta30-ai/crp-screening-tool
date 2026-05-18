@@ -979,12 +979,12 @@ def generate_cpa026_pdf(r_val, state_label, ls_factor, ls_source, df, ei_max, ei
         c = canvas.Canvas(pdf_buffer, pagesize=letter)
         width, height = letter
 
-        # Margins
-        margin_left = 0.5 * inch
-        margin_right = 0.5 * inch
-        margin_top = 0.5 * inch
+        # Margins - increased for better whitespace
+        margin_left = 0.6 * inch
+        margin_right = 0.6 * inch
+        margin_top = 0.6 * inch
         current_y = height - margin_top
-        line_height = 0.12 * inch
+        line_height = 0.14 * inch  # Increased for more breathing room
 
         # ═══════════════════════════════════════════════════════════
         # FORM HEADER
@@ -1023,7 +1023,7 @@ def generate_cpa026_pdf(r_val, state_label, ls_factor, ls_source, df, ei_max, ei
             c.drawString(margin_left + 1.5*inch, current_y, blank)
             current_y -= line_height * 1.1
 
-        current_y -= line_height * 0.5
+        current_y -= line_height * 1.2  # Increased spacing before next section
 
         # ═══════════════════════════════════════════════════════════
         # SECTION B: HIGHLY ERODIBLE LAND (HEL) DETERMINATION
@@ -1050,38 +1050,38 @@ def generate_cpa026_pdf(r_val, state_label, ls_factor, ls_source, df, ei_max, ei
         ls_display = f"{ls_factor:.3f}" if ls_factor else "Approximated"
 
         # Format R-Factor - parameter on line 1, source on line 2
-        c.setFont("Helvetica", 9)
+        c.setFont("Helvetica", 10)
         c.drawString(margin_left + 0.3*inch, current_y, f"R-Factor (Rainfall): {r_val:.1f}")
-        current_y -= line_height * 0.75
-        c.setFont("Helvetica", 8)
+        current_y -= line_height * 0.85
+        c.setFont("Helvetica", 9)  # Increased from 8 to 9
         c.drawString(margin_left + 0.5*inch, current_y, f"Source: {state_label}")
-        current_y -= line_height * 1.2
+        current_y -= line_height * 1.6  # Increased spacing between parameters
 
         # Format K-Factor - parameter on line 1, range on line 2
-        c.setFont("Helvetica", 9)
+        c.setFont("Helvetica", 10)
         c.drawString(margin_left + 0.3*inch, current_y, f"K-Factor (Soil): {k_avg:.4f}")
-        current_y -= line_height * 0.75
-        c.setFont("Helvetica", 8)
+        current_y -= line_height * 0.85
+        c.setFont("Helvetica", 9)  # Increased from 8 to 9
         c.drawString(margin_left + 0.5*inch, current_y, f"Range: {k_min:.4f}–{k_max:.4f}")
-        current_y -= line_height * 1.2
+        current_y -= line_height * 1.6  # Increased spacing between parameters
 
         # Format LS-Factor - parameter on line 1, source on line 2
-        c.setFont("Helvetica", 9)
+        c.setFont("Helvetica", 10)
         c.drawString(margin_left + 0.3*inch, current_y, f"LS-Factor (Slope): {ls_display}")
-        current_y -= line_height * 0.75
-        c.setFont("Helvetica", 8)
+        current_y -= line_height * 0.85
+        c.setFont("Helvetica", 9)  # Increased from 8 to 9
         c.drawString(margin_left + 0.5*inch, current_y, f"Source: {ls_source}")
-        current_y -= line_height * 1.2
+        current_y -= line_height * 1.6  # Increased spacing between parameters
 
         # Format T-Factor - parameter on line 1, range on line 2
-        c.setFont("Helvetica", 9)
+        c.setFont("Helvetica", 10)
         c.drawString(margin_left + 0.3*inch, current_y, f"T-Factor (Tolerance): {t_avg:.2f} t/ac/yr")
-        current_y -= line_height * 0.75
-        c.setFont("Helvetica", 8)
+        current_y -= line_height * 0.85
+        c.setFont("Helvetica", 9)  # Increased from 8 to 9
         c.drawString(margin_left + 0.5*inch, current_y, f"Range: {t_min:.2f}–{t_max:.2f}")
-        current_y -= line_height * 1.3
+        current_y -= line_height * 1.8  # Extra space before EI result
 
-        current_y -= line_height * 0.5
+        current_y -= line_height * 0.3
 
         # Determination Result
         c.setFont("Helvetica-Bold", 10)
@@ -1091,7 +1091,7 @@ def generate_cpa026_pdf(r_val, state_label, ls_factor, ls_source, df, ei_max, ei
         c.setFont("Helvetica", 8)
         current_y -= line_height
         c.drawString(margin_left + 0.5*inch, current_y, f"(Range: {ei_min:.2f}–{ei_max:.2f})")
-        current_y -= line_height * 1.5
+        current_y -= line_height * 2.0  # Increased spacing before next section
 
         # ═══════════════════════════════════════════════════════════
         # SECTION C: FIELD DETERMINATION TABLE
@@ -1114,7 +1114,7 @@ def generate_cpa026_pdf(r_val, state_label, ls_factor, ls_source, df, ei_max, ei
         c.line(margin_left + 0.1*inch, current_y + line_height*0.2, width - margin_right, current_y + line_height*0.2)
         current_y -= line_height * 0.3
 
-        # Table rows (one per soil component)
+        # Table rows (one per soil component) - increased row height for readability
         c.setFont("Helvetica", 8)
         for idx, row in df.iterrows():
             soil_type = str(row.get("Soil Type", "Field"))[:20]
@@ -1130,9 +1130,9 @@ def generate_cpa026_pdf(r_val, state_label, ls_factor, ls_source, df, ei_max, ei
             c.drawString(col_x[3], current_y, acres)
             c.drawString(col_x[4], current_y, det_date)
             c.drawString(col_x[5], current_y, sodbust)
-            current_y -= line_height
+            current_y -= line_height * 1.2  # Increased from 1.0 for better spacing
 
-        current_y -= line_height
+        current_y -= line_height * 1.2  # Increased spacing before next section
 
         # ═══════════════════════════════════════════════════════════
         # SECTION D: CERTIFICATIONS (NRCS Staff use)
