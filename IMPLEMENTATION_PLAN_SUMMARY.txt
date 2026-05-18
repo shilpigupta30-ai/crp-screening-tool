@@ -1,0 +1,415 @@
+================================================================================
+TWO-TIER UI SYSTEM IMPLEMENTATION PLAN — SUMMARY
+CRP HEL Screening Tool v16
+================================================================================
+
+DELIVERABLES CREATED:
+================================================================================
+
+1. TWO_TIER_UI_IMPLEMENTATION_PLAN.md (Main Document)
+   ├─ 1. Architecture Overview (high-level & data flow diagrams)
+   ├─ 2. Code Structure for crp_final_v16.py
+   │  ├─ Session state initialization
+   │  ├─ Mode toggle UI component
+   │  ├─ Function signatures for tier-specific views
+   │  ├─ Helper functions (data preparation)
+   │  └─ Code snippets ready to copy-paste
+   ├─ 3. Detailed Component Breakdown
+   │  ├─ Farmer view (what's shown/hidden)
+   │  ├─ Conservationist view (6-tab layout)
+   │  └─ Shared components matrix
+   ├─ 4. AD1026 PDF Template Data
+   │  ├─ USDA form field mapping
+   │  ├─ Pre-fill logic
+   │  └─ PDF generation function
+   ├─ 5. NRCS Office Finder
+   │  ├─ Data source (USDA Service Locator API)
+   │  ├─ Integration approach
+   │  └─ User experience flow
+   ├─ 6. Implementation Roadmap
+   │  ├─ Phase 1: UI toggle & basic split (Week 1-2)
+   │  ├─ Phase 2: NRCS office finder (Week 2)
+   │  ├─ Phase 3: AD1026 pre-fill & PDF (Week 3)
+   │  ├─ Phase 4: Field verification & comparison (Week 4)
+   │  └─ Phase 5: Technical details & export (Week 4)
+   ├─ 7. Session State Variables Reference
+   ├─ 8. Conditional Rendering Checklist
+   ├─ 9. Integration Checklist
+   ├─ 10. Testing Strategy
+   ├─ 11. Deployment Notes
+   ├─ 12. Expected Outcomes
+   └─ Appendix A & B (File structure, references)
+
+2. TWO_TIER_UI_MOCKUPS_AND_FLOWS.md (Visual Guide)
+   ├─ 1. User Flow Diagrams (Farmer & Conservationist)
+   ├─ 2. UI Mockups (Text-based screenshots)
+   │  ├─ Farmer view — full screen
+   │  ├─ Conservationist view — all 6 tabs
+   │  └─ Mobile-responsive layouts
+   ├─ 3. Farmer View Action Flows
+   │  ├─ Find NRCS office flow
+   │  ├─ Print results flow
+   │  └─ Share with NRCS flow
+   ├─ 4. Conservationist Workflow
+   │  ├─ Complete 8-step workflow
+   │  └─ Data flow within mode
+   ├─ 5. Mobile-Responsive Layouts
+   ├─ 6. Error Handling Flows
+   │  ├─ Invalid polygon
+   │  ├─ State not detected
+   │  ├─ SSURGO data unavailable
+   ├─ 7. Confidence Indicators
+   └─ 8. Data Flow Diagrams
+
+3. TWO_TIER_UI_QUICK_REFERENCE.md (Developer Cheat Sheet)
+   ├─ 1. Session state variables (copy-paste)
+   ├─ 2. Mode selector UI (copy-paste)
+   ├─ 3. Main rendering logic (copy-paste)
+   ├─ 4. Farmer view — simplified results (copy-paste)
+   ├─ 5. Conservationist view — tab structure (copy-paste)
+   ├─ 6. AD1026 PDF generation (function signature)
+   ├─ 7. NRCS office finder (function signature)
+   ├─ 8. Hidden/visible components checklist
+   ├─ 9. Implementation phases checklist
+   ├─ 10. File changes summary
+   ├─ 11. Environment variables
+   ├─ 12. Testing matrix
+   ├─ 13. Key metrics & success criteria
+   ├─ 14. Known limitations & future work
+   └─ 15. Contact & support
+
+================================================================================
+ARCHITECTURE AT A GLANCE
+================================================================================
+
+SHARED DATA LAYER (single code path):
+  └─ SSURGO query → DEM fetch (LS) → R-factor (NOAA) → EI calculation
+     └─ Wetland detection (SSURGO + NLCD + NHD)
+
+TIER 1: FARMER VIEW (non-technical, actionable)
+  ├─ HEL Status badge (Yes/No/Maybe with color)
+  ├─ Wetland Status (Yes/No)
+  ├─ Next Step (always "Contact NRCS")
+  ├─ Find NRCS Office button (with map & contact info)
+  ├─ Print results (simple 1-page PDF)
+  └─ Share link (shareable URL with embedded results)
+  
+  HIDDEN: R, K, L, S factors | Component table | AD1026 form | Technical details
+
+TIER 2: CONSERVATIONIST VIEW (technical, export-ready)
+  ├─ Tab 1: Results Overview (EI metrics, HEL status, confidence)
+  ├─ Tab 2: Field Verification (checklist + automated vs field comparison)
+  ├─ Tab 3: Component Breakdown (full table of all soil components)
+  ├─ Tab 4: AD1026 Pre-fill (read-only R, K, LS, T → download PDF form)
+  ├─ Tab 5: Technical Details (uncertainty ranges, data provenance, methodology)
+  └─ Tab 6: Export & Download (CSV, PDF report, AD1026 form)
+  
+  HIDDEN: NRCS office finder | Simple status badges
+
+================================================================================
+IMPLEMENTATION TIMELINE
+================================================================================
+
+Week 1-2: Phase 1 — UI Toggle & Basic Split
+  Day 1-2:   Session state init + mode toggle UI
+  Day 3-4:   Farmer view stub (HEL badge + next step)
+  Day 5-7:   Conservationist view stubs (empty tabs)
+  Day 8-10:  Testing + git commit
+  COMMIT: "feat: Add two-tier UI toggle framework"
+
+Week 2: Phase 2 — NRCS Office Finder (Farmer View)
+  Day 1-3:   USDA Service Locator API integration + fallback
+  Day 4-5:   UI for office display + prep guide
+  Day 6-7:   Testing on 5+ states
+  COMMIT: "feat: Add NRCS office locator"
+
+Week 3: Phase 3 — AD1026 Pre-fill & PDF
+  Day 1-2:   Form field mapping (R, K, LS, T)
+  Day 3-4:   PDF generation using reportlab
+  Day 5-6:   Tab 4 UI + download button
+  Day 7:     Testing + git commit
+  COMMIT: "feat: Add AD1026 pre-filled PDF export"
+
+Week 4: Phase 4 — Field Verification & Comparison (Conservationist)
+  Day 1-2:   Tab 2 UI + input fields
+  Day 3-4:   Comparison logic (automated vs field)
+  Day 5-6:   Discrepancy highlighting
+  Day 7:     Testing + git commit
+  COMMIT: "feat: Add field verification & comparison"
+
+Week 4: Phase 5 — Technical Details & Export (Conservationist)
+  Day 1-2:   Component breakdown table (Tab 3)
+  Day 3:     Uncertainty ranges + provenance (Tab 5)
+  Day 4:     CSV & PDF export functions (Tab 6)
+  Day 5-6:   Testing (all exports validate)
+  Day 7:     Git commit + documentation
+  COMMIT: "feat: Add technical details & multi-format export"
+
+Week 5: Phase 6 — Testing & Final Polish
+  Day 1-2:   Unit tests (6+ per phase)
+  Day 3-4:   Manual testing (both user flows end-to-end)
+  Day 5:     Mobile responsiveness testing
+  Day 6:     Documentation (README, CHANGELOG)
+  Day 7:     Final testing + Render deployment
+  COMMIT: "test: Add comprehensive test suite for two-tier UI"
+
+ESTIMATED TOTAL: 5 weeks (or 2-3 weeks if working full-time)
+
+================================================================================
+KEY FILES TO CREATE/MODIFY
+================================================================================
+
+NEW FILES:
+  • crp_final_v16.py                 (main app, clone from v12_hf)
+  • nrcs_office_locator.py           (NRCS office finder module)
+  • ad1026_pdf_generator.py          (AD1026 form generation)
+  • tests/test_two_tier_ui.py        (unit tests)
+  • CHANGELOG.md                      (v16 entry)
+  • TWO_TIER_UI_IMPLEMENTATION_PLAN.md (this plan)
+  • TWO_TIER_UI_MOCKUPS_AND_FLOWS.md (visual guide)
+  • TWO_TIER_UI_QUICK_REFERENCE.md   (developer cheat sheet)
+
+MODIFIED FILES:
+  • requirements.txt                 (add reportlab)
+  • README.md                        (add two-tier description)
+  • crp_final_v12_hf.py              (archive)
+
+================================================================================
+SESSION STATE VARIABLES
+================================================================================
+
+Authentication & Mode:
+  conservationist_mode (bool)      # Toggle between views
+  user_authenticated (bool)        # Future: GitHub login
+  user_email (str)                # Future: User identity
+
+Geospatial & Analysis:
+  last_polygon_bounds (tuple)      # (min_lat, min_lon, max_lat, max_lon)
+  last_wkt_string (str)           # WKT polygon for API calls
+  cached_analysis_results (dict)   # Full analysis output (cache)
+  cached_r_factor (float)         # R-factor value
+  cached_r_source (str)           # R-factor source label
+  cached_ei_data (DataFrame)      # EI results per component
+
+Conservationist Mode:
+  field_verification_data (dict)   # Field visit observations
+  ad1026_form_data (dict)         # AD1026 form fields
+
+================================================================================
+CONDITIONAL RENDERING RULES
+================================================================================
+
+FARMER VIEW (🌾):
+  SHOW:
+    ✓ HEL status badge (Yes/No/Maybe)
+    ✓ Wetland status (Yes/No)
+    ✓ "Contact NRCS" next step
+    ✓ Find NRCS office button
+    ✓ Print / share buttons
+    ✓ Confidence indicator
+  
+  HIDE:
+    ✗ R, K, L, S factor details
+    ✗ Component breakdown table
+    ✗ Uncertainty metrics
+    ✗ AD1026 form
+    ✗ Technical methodology
+    ✗ CSV/PDF export (except simple print)
+
+CONSERVATIONIST VIEW (🔬):
+  SHOW:
+    ✓ 6 tabs (Results, Verification, Component, AD1026, Technical, Export)
+    ✓ Full data tables & component breakdown
+    ✓ Uncertainty ranges
+    ✓ Data provenance
+    ✓ AD1026 pre-fill fields
+    ✓ Export buttons (CSV, PDF, AD1026)
+  
+  HIDE:
+    ✗ NRCS office finder (farmer-specific)
+    ✗ Simplified status badges (show detailed analysis)
+    ✗ "Contact NRCS" next step (show technical workflow)
+
+================================================================================
+TESTING CHECKLIST
+================================================================================
+
+Unit Tests:
+  [ ] test_farmer_view_hides_technical_fields
+  [ ] test_conservationist_view_shows_all_tabs
+  [ ] test_session_state_persistence
+  [ ] test_ad1026_pdf_generation
+  [ ] test_nrcs_office_finder
+  [ ] test_cache_invalidation
+  [ ] test_field_verification_data_persistence
+  [ ] test_mode_toggle_preserves_analysis
+
+Manual Testing:
+  [ ] Farmer: Draw polygon → HEL badge → Find NRCS → Map appears
+  [ ] Farmer: Print button → PDF downloads with summary
+  [ ] Farmer: Share button → Shareable URL generated
+  [ ] Farmer: Verify F12 shows no technical fields in DOM
+  [ ] Conservationist: Toggle mode → 6 tabs appear
+  [ ] Conservationist: Fill field verification → Data persists
+  [ ] Conservationist: Tab 4 → Download AD1026 PDF
+  [ ] Conservationist: Tab 6 → CSV, PDF, AD1026 all download
+  [ ] Mobile: Test farmer view at 375px width
+  [ ] Mobile: Test conservationist tabs scroll on mobile
+  [ ] Error: State not detected → Warning shown (both views)
+  [ ] Error: SSURGO unavailable → Error message (both views)
+
+Performance:
+  [ ] Map renders in < 3 seconds
+  [ ] Analyze button returns results in < 10 seconds
+  [ ] PDF generation < 2 seconds
+  [ ] No memory leaks (session state cleanup)
+  [ ] Render deployment stays green
+
+================================================================================
+DEPLOYMENT CHECKLIST
+================================================================================
+
+Code:
+  [ ] Create crp_final_v16.py from crp_final_v12_hf.py clone
+  [ ] Add session state initialization
+  [ ] Implement mode selector UI
+  [ ] Create farmer view function
+  [ ] Create conservationist view with 6 tabs
+  [ ] Implement NRCS office finder
+  [ ] Implement AD1026 PDF generator
+  [ ] Add all helper functions & utilities
+  [ ] Update requirements.txt (add reportlab)
+  [ ] Update README.md (add two-tier description)
+
+Documentation:
+  [ ] Create CHANGELOG.md with v16 entry
+  [ ] Create TWO_TIER_UI_IMPLEMENTATION_PLAN.md
+  [ ] Create TWO_TIER_UI_MOCKUPS_AND_FLOWS.md
+  [ ] Create TWO_TIER_UI_QUICK_REFERENCE.md
+  [ ] Update README.md with two-tier overview
+
+Testing:
+  [ ] Run unit tests (6+ per phase)
+  [ ] Manual testing (both user flows)
+  [ ] Mobile responsiveness
+  [ ] Edge cases (invalid polygon, no SSURGO, etc.)
+
+Git:
+  [ ] Commit Phase 1: "feat: Add two-tier UI toggle framework"
+  [ ] Commit Phase 2: "feat: Add NRCS office locator"
+  [ ] Commit Phase 3: "feat: Add AD1026 pre-filled PDF export"
+  [ ] Commit Phase 4: "feat: Add field verification & comparison"
+  [ ] Commit Phase 5: "feat: Add technical details & multi-format export"
+  [ ] Commit Phase 6: "test: Add comprehensive test suite"
+  [ ] Merge to main
+
+Render Deployment:
+  [ ] Push to GitHub
+  [ ] Verify Render auto-deploys
+  [ ] Test live URL
+  [ ] Verify environment variables set
+
+================================================================================
+SUCCESS METRICS
+================================================================================
+
+Farmer User Experience:
+  • HEL determination visible in < 2 seconds ✓
+  • NRCS office found in < 30 seconds ✓
+  • Single click to print or share ✓
+  • No technical jargon on screen ✓
+  • NPS score > 7/10 ✓
+
+Conservationist User Experience:
+  • All 6 tabs load without delay ✓
+  • Field verification data persists across tabs ✓
+  • AD1026 pre-fill accurate & submittable ✓
+  • CSV export readable in Excel ✓
+  • Confidence flags clear & actionable ✓
+
+System Performance:
+  • Map renders < 3 seconds ✓
+  • Analyze button < 10 seconds ✓
+  • PDF generation < 2 seconds ✓
+  • No memory leaks ✓
+  • Render deployment green ✓
+
+================================================================================
+NEXT STEPS
+================================================================================
+
+1. START PHASE 1 IMMEDIATELY:
+   a) Clone crp_final_v12_hf.py → crp_final_v16.py
+   b) Add init_session_state() at top
+   c) Add render_mode_selector() in sidebar
+   d) Add show_farmer_view() stub
+   e) Add show_conservationist_view() stub (6 empty tabs)
+   f) Add branching logic at end: if/else on conservationist_mode
+   g) Commit & push
+
+2. TEST PHASE 1:
+   a) Toggle between modes without data loss
+   b) Verify session state persists
+   c) Test on mobile (375px width)
+
+3. PROCEED TO PHASE 2 (NRCS Office Finder):
+   a) Implement find_nrcs_office() function
+   b) Add show_nrcs_office_finder() UI
+   c) Test API on 5+ states
+
+4. COMMUNICATE WITH TEAM:
+   a) Share this implementation plan
+   b) Get feedback on two-tier design
+   c) Discuss timeline (5 weeks vs. 2-3 weeks full-time)
+   d) Assign roles (frontend, PDF generation, testing)
+
+================================================================================
+RESOURCES
+================================================================================
+
+Documentation Files (in /Users/vivekgupta/crp/):
+  • TWO_TIER_UI_IMPLEMENTATION_PLAN.md       (100+ pages, full details)
+  • TWO_TIER_UI_MOCKUPS_AND_FLOWS.md         (Visual diagrams & flows)
+  • TWO_TIER_UI_QUICK_REFERENCE.md           (Developer cheat sheet)
+  • IMPLEMENTATION_PLAN_SUMMARY.txt          (This file)
+
+External APIs:
+  • USDA Service Locator: https://offices.sc.egov.usda.gov/
+  • USDA SDA (SSURGO): https://sdmdataaccess.sc.egov.usda.gov/
+  • USGS 3DEP (DEM): https://www.usgs.gov/3dep
+  • NOAA CDO (R-factor): https://www.ncei.noaa.gov/cdo-web/
+
+Code References:
+  • Current main app: crp_final_v12_hf.py (1,403 lines)
+  • Existing modules: rfactor_calculator.py, wetland_features.py
+
+Deliverables:
+  • PDF generation: reportlab library
+  • Form filling: pypdf (if needed for dynamic fields)
+
+================================================================================
+CONTACT & SUPPORT
+================================================================================
+
+Questions about implementation plan:
+  Email: shilpigupta30@gmail.com
+  
+Domain expert feedback needed:
+  • NRCS Part 616 methodology
+  • AD1026 form accuracy
+  • CRP practice recommendations
+  • Field testing (Iowa, Minnesota, Missouri)
+
+GitHub:
+  Repo: shilpigupta30-ai/crp-hel-screening-tool
+  Issues: Report bugs or feature requests
+
+================================================================================
+END OF SUMMARY
+================================================================================
+
+Version: 1.0
+Date: 2026-05-18
+Status: READY FOR IMPLEMENTATION
+
+For detailed code & diagrams, refer to the full implementation plan documents.

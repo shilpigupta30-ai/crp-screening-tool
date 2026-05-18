@@ -241,7 +241,7 @@ def get_noaa_r_factor(lat, lon, debug=False):
         }
         headers = {"token": NOAA_CDO_TOKEN}
 
-        stations_response = requests.get(stations_url, params=stations_params, headers=headers, timeout=5)
+        stations_response = requests.get(stations_url, params=stations_params, headers=headers, timeout=10)
         stations_response.raise_for_status()
         stations_data = stations_response.json()
 
@@ -324,7 +324,7 @@ def get_noaa_r_factor(lat, lon, debug=False):
 
         logs.append(f"2️⃣ Fetching daily precipitation for {start_date} to {end_date}...")
 
-        data_response = requests.get(data_url, params=data_params, headers=headers, timeout=5)
+        data_response = requests.get(data_url, params=data_params, headers=headers, timeout=10)
         data_response.raise_for_status()
         data = data_response.json()
 
@@ -342,14 +342,13 @@ def get_noaa_r_factor(lat, lon, debug=False):
         # Sum daily precipitation (NOAA data in tenths of mm)
         total_precip_tenths = sum([r["value"] for r in data["results"] if r.get("value")])
         precip_mm = total_precip_tenths / 10.0  # Convert tenths of mm to mm
-        precip_inches = precip_mm / 25.4        # Convert mm to inches for Brown & Foster
 
-        logs.append(f"3️⃣ Total precipitation: {total_precip_tenths} (tenths of mm) = {precip_mm:.1f} mm = {precip_inches:.1f} inches")
+        logs.append(f"3️⃣ Total precipitation: {total_precip_tenths} (tenths of mm) = {precip_mm:.1f} mm")
         logs.append(f"📊 Raw data sample (first 5): {[r.get('value') for r in data['results'][:5]]}")
 
-        # Validate precipitation is reasonable (US typically 12-100 inches/year)
-        if precip_inches <= 0 or precip_inches > 100:
-            logs.append(f"⚠️ Precipitation {precip_inches:.1f} inches is unreasonable. Falling back to state R-factor.")
+        # Validate precipitation is reasonable (US typically 300-2500 mm/year)
+        if precip_mm <= 0 or precip_mm > 2500:
+            logs.append(f"⚠️ Precipitation {precip_mm:.1f} mm is unreasonable. Falling back to state R-factor.")
             if debug:
                 try:
                     st.session_state["debug_logs"] = logs
@@ -358,10 +357,10 @@ def get_noaa_r_factor(lat, lon, debug=False):
             return None, None
 
         # Step 3: Convert to R-factor using Brown & Foster equation
-        # R ≈ 0.9041 × P^1.61 (P in inches) — calibrated to match NRCS FOTG state averages
-        r_factor = round(0.9041 * (precip_inches ** 1.61), 1)
+        # R ≈ 0.04887 × P^1.61 (P in mm)
+        r_factor = round(0.04887 * (precip_mm ** 1.61), 1)
 
-        logs.append(f"✅ Brown & Foster conversion: R = 0.9041 × {precip_inches:.1f}^1.61 = {r_factor}")
+        logs.append(f"✅ Brown & Foster conversion: R = 0.04887 × {precip_mm:.1f}^1.61 = {r_factor}")
 
         source_label = f"Point-specific R={r_factor} (NOAA: {station_name})"
         logs.append(f"🎉 SUCCESS: {source_label}")
@@ -630,30 +629,24 @@ def calculate_ls_factor_from_dem(lat, lon, buffer_degrees=0.01):
     """
     Calculate LS factor from USGS 3DEP elevation data (DEM-based).
 
-    Fetches real 30m DEM data via py3dep (USGS 3DEP API).
     Falls back to approximation (Slope^1.2 × 0.1) if DEM fetch fails.
     Results are cached for 1 hour to reduce compute and improve performance.
 
-    Returns: (ls_factor_value, is_dem_based, l_factor_avg, s_factor_avg, slope_pct_avg)
+    Returns: (ls_factor_value, is_dem_based)
       - ls_factor_value: float, the calculated LS factor
       - is_dem_based: bool, True if from DEM, False if fallback approximation
-      - l_factor_avg: float, average L component
-      - s_factor_avg: float, average S component
-      - slope_pct_avg: float, average slope percentage
     """
     try:
-        import py3dep
+        # Simulate DEM fetch (in production: fetch from USGS 3DEP API)
+        # For now, using simulated elevation data
+        size = 37
+        dem = np.zeros((size, size))
 
-        # Define bounding box around the point
-        bbox = (lon - buffer_degrees, lat - buffer_degrees,
-                lon + buffer_degrees, lat + buffer_degrees)
-
-        # Fetch real 30m DEM from USGS 3DEP
-        dem_da = py3dep.get_dem(bbox, resolution=30)
-        dem = dem_da.values.squeeze()
-
-        # Remove nodata values
-        dem = np.where(np.isnan(dem), np.nanmean(dem), dem)
+        # Create realistic elevation variation
+        np.random.seed(int((lat + lon) * 1000) % (2**31))  # Deterministic randomness
+        for i in range(size):
+            for j in range(size):
+                dem[i, j] = 350 + (i * 0.5) + (j * 0.3) + np.random.normal(0, 0.2)
 
         # Calculate slope steepness (S factor)
         grad_x = ndimage.sobel(dem, axis=1) / (2 * 30)
@@ -669,9 +662,9 @@ def calculate_ls_factor_from_dem(lat, lon, buffer_degrees=0.01):
         )
 
         # Calculate slope length (L factor) from flow accumulation
-        flow_accum = np.ones_like(dem, dtype=float)
-        for i in range(1, dem.shape[0]-1):
-            for j in range(1, dem.shape[1]-1):
+        flow_accum = np.ones((size, size))
+        for i in range(1, size-1):
+            for j in range(1, size-1):
                 neighbors = [
                     dem[i-1, j-1], dem[i-1, j], dem[i-1, j+1],
                     dem[i, j-1], dem[i, j+1],
@@ -682,17 +675,14 @@ def calculate_ls_factor_from_dem(lat, lon, buffer_degrees=0.01):
 
         l_factor = (flow_accum * 30 / 22.13) ** 0.4
 
-        # Combine into LS factor (area-weighted mean)
-        ls_factor = float(np.mean(l_factor * s_factor))
-        l_factor_avg = float(np.mean(l_factor))
-        s_factor_avg = float(np.mean(s_factor))
-        slope_pct_avg = float(np.mean(slope_pct[slope_pct > 0]))  # Average non-zero slopes
+        # Combine into LS factor (use area-weighted mean, not max)
+        ls_factor = np.mean(l_factor * s_factor)
 
-        return ls_factor, True, l_factor_avg, s_factor_avg, slope_pct_avg
+        return ls_factor, True
 
     except Exception as e:
         # Fallback: return None to trigger old approximation
-        return None, False, None, None, None
+        return None, False
 
 
 def get_confidence(max_ei, state_label, max_slope):
@@ -748,7 +738,11 @@ if "debug_logs" not in st.session_state:
 
 
 # --- 4. UI Configuration ---
+<<<<<<< HEAD
 st.set_page_config(page_title="CRP HEL and Wetland Screening Tool (Prototype)", layout="wide")
+=======
+st.set_page_config(page_title="CRP HEL Screening & CP Recommendation Tool", layout="wide")
+>>>>>>> a096d349b591f83bee0c179966ca55fc57500073
 
 st.markdown("""
     <style>
@@ -780,25 +774,14 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
+<<<<<<< HEAD
 st.title("🛡️ CRP HEL and Wetland Screening Tool (Prototype)")
+=======
+st.title("🛡️ CRP HEL Screening & CP Recommendation Tool")
+>>>>>>> a096d349b591f83bee0c179966ca55fc57500073
 
 # --- 5. Sidebar ---
 with st.sidebar:
-
-    # ── User Mode Selection ──────────────────────────────────────────────
-    st.header("👤 User Mode")
-    conservationist_mode = st.checkbox(
-        "🔐 NRCS Conservationist Mode",
-        value=False,
-        help="Enable advanced features: field verification, AD1026 pre-fill, technical details"
-    )
-
-    if conservationist_mode:
-        st.info("👨‍🌾 **Conservationist Workspace Enabled**\n\nYou now have access to:\n- Field data input\n- AD1026 pre-fill\n- Technical details\n- Export options")
-    else:
-        st.info("👨‍🚜 **Farmer-Friendly Mode**\n\nSimple results with next steps.\nCall NRCS for official determination.")
-
-    st.divider()
 
     # ── Region Jump ──────────────────────────────────────────────────────
     st.header("🌎 National Search")
@@ -872,11 +855,7 @@ with st.sidebar:
             st.session_state["last_wkt"]          = normalized  # FIXED: sync state
             st.session_state["is_loading"]        = True
             st.session_state["last_request_time"] = time.time()
-            noaa_r, noaa_label = get_noaa_r_factor(center_lat, center_lon, debug=debug_mode)
-            if noaa_r:
-                st.session_state["detected_r"] = (noaa_r, noaa_label, "NOAA CDO")
-            else:
-                st.session_state["detected_r"] = get_state_r_factor(center_lat, center_lon, debug=debug_mode)
+            st.session_state["detected_r"]        = get_state_r_factor(center_lat, center_lon, debug=debug_mode)
 
             with st.spinner("Fetching soil data from USDA..."):
                 st.session_state["analysis_results"] = fetch_nrcs_data(wkt)
@@ -923,8 +902,7 @@ with st.sidebar:
         '<b>Erosion Index (EI) Notice:</b> EI is calculated as R × K × LS / T. '
         'R-factors are point-specific (via NOAA weather stations) or state-level averages from NRCS FOTG as fallback. '
         'LS is the combined Slope Length (L) and Slope Steepness (S) factor — '
-        'LS is calculated from real USGS 3DEP 30m elevation data (true L × S formula, ±5% error). '
-        'Falls back to slope steepness approximation (±23%) if DEM data is unavailable. '
+        'LS is approximated from slope steepness only (slope length unavailable in SSURGO). '
         '<br><br>'
         '<b>Data Quality & Maintenance:</b> R-factors are monitored quarterly (January, April, July, October) '
         'from official NRCS FOTG and EPA RUSLE2 sources to ensure latest updates. SSURGO soil data updates in '
@@ -938,836 +916,11 @@ with st.sidebar:
         'flagged when hydric soils are detected. These do not replace an official NRCS wetland '
         'determination or account for state signup rules, program periods, or site conditions.'
         '<br><br>'
-        '<b>Data Sources:</b> Soil Survey Staff. Soil Survey Geographic (SSURGO) Database. '
-        'United States Department of Agriculture, Natural Resources Conservation Service. '
-        'Elevation data: USGS 3D Elevation Program (3DEP) 30m DEM via py3dep.'
+        '<b>Data Source:</b> Soil Survey Staff. Soil Survey Geographic (SSURGO) Database. '
+        'United States Department of Agriculture, Natural Resources Conservation Service.'
         '</div>',
         unsafe_allow_html=True
     )
-
-
-# =============================================================================
-# VIEW FUNCTIONS FOR TWO-TIER UI
-# =============================================================================
-
-def generate_cpa026_pdf(r_val, state_label, ls_factor, ls_source, df, ei_max, ei_min, center_lat, center_lon):
-    """
-    Generate PDF with pre-filled NRCS-CPA-026 form data.
-
-    Form: NRCS-CPA-026 "Highly Erodible Land and Wetland Conservation Determination"
-    This is the official NRCS form for documenting HEL determinations (not the AD-1026 FSA form).
-
-    Args:
-        r_val: R-factor value
-        state_label: R-factor source label
-        ls_factor: LS-factor value
-        ls_source: LS-factor source label
-        df: DataFrame with soil component data
-        ei_max: Maximum EI value
-        ei_min: Minimum EI value
-        center_lat: Field center latitude
-        center_lon: Field center longitude
-
-    Returns:
-        bytes: PDF document ready for download
-    """
-    try:
-        from reportlab.lib.pagesizes import letter
-        from reportlab.pdfgen import canvas
-        from reportlab.lib.units import inch
-        from datetime import datetime
-        from io import BytesIO
-
-        pdf_buffer = BytesIO()
-        c = canvas.Canvas(pdf_buffer, pagesize=letter)
-        width, height = letter
-
-        # Margins
-        margin_left = 0.5 * inch
-        margin_right = 0.5 * inch
-        margin_top = 0.5 * inch
-        current_y = height - margin_top
-        line_height = 0.12 * inch
-
-        # ═══════════════════════════════════════════════════════════
-        # FORM HEADER
-        # ═══════════════════════════════════════════════════════════
-        c.setFont("Helvetica-Bold", 14)
-        c.drawString(margin_left, current_y, "NRCS-CPA-026")
-        c.setFont("Helvetica-Bold", 11)
-        current_y -= line_height * 1.3
-        c.drawString(margin_left, current_y, "HIGHLY ERODIBLE LAND AND WETLAND CONSERVATION DETERMINATION")
-        current_y -= line_height * 1.5
-
-        # Form info
-        c.setFont("Helvetica", 9)
-        c.drawString(margin_left, current_y, "Generated by: CRP HEL Screening Tool (SCREENING ONLY)")
-        current_y -= line_height
-        c.drawString(margin_left, current_y, f"Date: {datetime.now().strftime('%m/%d/%Y')}  |  Coordinates: {center_lat:.4f}°N, {center_lon:.4f}°W")
-        current_y -= line_height * 2
-
-        # ═══════════════════════════════════════════════════════════
-        # SECTION A: FARM/FIELD IDENTIFICATION
-        # ═══════════════════════════════════════════════════════════
-        c.setFont("Helvetica-Bold", 11)
-        c.drawString(margin_left, current_y, "SECTION A: FARM AND FIELD INFORMATION")
-        current_y -= line_height * 1.3
-
-        c.setFont("Helvetica", 10)
-        form_data = [
-            ("Name:", "________________________________________"),
-            ("Address:", "________________________________________"),
-            ("County:", "__________________  State: ___  Zip: __________"),
-            ("FSA Farm No.:", "_______________  Tract No.: _______________"),
-        ]
-
-        for label, blank in form_data:
-            c.drawString(margin_left + 0.2*inch, current_y, label)
-            c.drawString(margin_left + 1.5*inch, current_y, blank)
-            current_y -= line_height * 1.1
-
-        current_y -= line_height * 0.5
-
-        # ═══════════════════════════════════════════════════════════
-        # SECTION B: HIGHLY ERODIBLE LAND (HEL) DETERMINATION
-        # ═══════════════════════════════════════════════════════════
-        c.setFont("Helvetica-Bold", 11)
-        c.drawString(margin_left, current_y, "SECTION B: HIGHLY ERODIBLE LAND (HEL) DETERMINATION")
-        current_y -= line_height * 1.3
-
-        c.setFont("Helvetica", 9)
-        c.drawString(margin_left + 0.2*inch, current_y, "Erosion Index (EI) Calculation: EI = (R × K × LS) / T")
-        current_y -= line_height
-
-        # RUSLE2 Parameters Table
-        c.setFont("Helvetica-Bold", 9)
-        c.drawString(margin_left + 0.2*inch, current_y, "RUSLE2 Parameters:")
-        current_y -= line_height * 1.2
-
-        k_avg = df["K-Fact"].mean() if not df.empty else 0
-        k_min = df["K-Fact"].min() if not df.empty else 0
-        k_max = df["K-Fact"].max() if not df.empty else 0
-        t_avg = df["T-Fact"].mean() if not df.empty else 0
-        t_min = df["T-Fact"].min() if not df.empty else 0
-        t_max = df["T-Fact"].max() if not df.empty else 0
-        ls_display = f"{ls_factor:.3f}" if ls_factor else "Approximated"
-
-        # Format R-Factor - parameter on line 1, source on line 2
-        c.setFont("Helvetica", 9)
-        c.drawString(margin_left + 0.3*inch, current_y, f"R-Factor (Rainfall): {r_val:.1f}")
-        current_y -= line_height * 0.75
-        c.setFont("Helvetica", 8)
-        c.drawString(margin_left + 0.5*inch, current_y, f"Source: {state_label}")
-        current_y -= line_height * 1.2
-
-        # Format K-Factor - parameter on line 1, range on line 2
-        c.setFont("Helvetica", 9)
-        c.drawString(margin_left + 0.3*inch, current_y, f"K-Factor (Soil): {k_avg:.4f}")
-        current_y -= line_height * 0.75
-        c.setFont("Helvetica", 8)
-        c.drawString(margin_left + 0.5*inch, current_y, f"Range: {k_min:.4f}–{k_max:.4f}")
-        current_y -= line_height * 1.2
-
-        # Format LS-Factor - parameter on line 1, source on line 2
-        c.setFont("Helvetica", 9)
-        c.drawString(margin_left + 0.3*inch, current_y, f"LS-Factor (Slope): {ls_display}")
-        current_y -= line_height * 0.75
-        c.setFont("Helvetica", 8)
-        c.drawString(margin_left + 0.5*inch, current_y, f"Source: {ls_source}")
-        current_y -= line_height * 1.2
-
-        # Format T-Factor - parameter on line 1, range on line 2
-        c.setFont("Helvetica", 9)
-        c.drawString(margin_left + 0.3*inch, current_y, f"T-Factor (Tolerance): {t_avg:.2f} t/ac/yr")
-        current_y -= line_height * 0.75
-        c.setFont("Helvetica", 8)
-        c.drawString(margin_left + 0.5*inch, current_y, f"Range: {t_min:.2f}–{t_max:.2f}")
-        current_y -= line_height * 1.3
-
-        current_y -= line_height * 0.5
-
-        # Determination Result
-        c.setFont("Helvetica-Bold", 10)
-        hel_status = "HEL" if ei_max >= 8.0 else "NOT HEL"
-        status_symbol = "☒" if ei_max >= 8.0 else "☐"
-        c.drawString(margin_left + 0.2*inch, current_y, f"{status_symbol} EROSION INDEX: {ei_max:.2f} → {hel_status}")
-        c.setFont("Helvetica", 8)
-        current_y -= line_height
-        c.drawString(margin_left + 0.5*inch, current_y, f"(Range: {ei_min:.2f}–{ei_max:.2f})")
-        current_y -= line_height * 1.5
-
-        # ═══════════════════════════════════════════════════════════
-        # SECTION C: FIELD DETERMINATION TABLE
-        # ═══════════════════════════════════════════════════════════
-        c.setFont("Helvetica-Bold", 11)
-        c.drawString(margin_left, current_y, "SECTION C: FIELD SUMMARY TABLE")
-        current_y -= line_height * 1.2
-
-        # Table headers
-        c.setFont("Helvetica-Bold", 8)
-        col_x = [margin_left + 0.2*inch, margin_left + 2.0*inch, margin_left + 2.8*inch,
-                 margin_left + 3.6*inch, margin_left + 4.4*inch, margin_left + 5.2*inch]
-        headers = ["Field", "HEL", "EI Value", "Acres", "Det. Date", "Sodbust"]
-
-        for i, header in enumerate(headers):
-            c.drawString(col_x[i], current_y, header)
-
-        current_y -= line_height * 0.9
-        c.setLineWidth(1)
-        c.line(margin_left + 0.1*inch, current_y + line_height*0.2, width - margin_right, current_y + line_height*0.2)
-        current_y -= line_height * 0.3
-
-        # Table rows (one per soil component)
-        c.setFont("Helvetica", 8)
-        for idx, row in df.iterrows():
-            soil_type = str(row.get("Soil Type", "Field"))[:20]
-            hel = "Y" if row.get("EI", 0) >= 8.0 else "N"
-            ei_val = f"{row.get('EI', 0):.1f}"
-            acres = "___"  # User fills in
-            det_date = datetime.now().strftime('%m/%d/%Y')
-            sodbust = "___"  # User fills in
-
-            c.drawString(col_x[0], current_y, soil_type)
-            c.drawString(col_x[1], current_y, hel)
-            c.drawString(col_x[2], current_y, ei_val)
-            c.drawString(col_x[3], current_y, acres)
-            c.drawString(col_x[4], current_y, det_date)
-            c.drawString(col_x[5], current_y, sodbust)
-            current_y -= line_height
-
-        current_y -= line_height
-
-        # ═══════════════════════════════════════════════════════════
-        # SECTION D: CERTIFICATIONS (NRCS Staff use)
-        # ═══════════════════════════════════════════════════════════
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(margin_left, current_y, "SECTION D: DETERMINATION CERTIFICATION")
-        current_y -= line_height * 1.2
-
-        c.setFont("Helvetica", 8)
-        c.drawString(margin_left + 0.2*inch, current_y, "Determined by (NRCS Staff): _________________________  Date: __________")
-        current_y -= line_height * 1.1
-        c.drawString(margin_left + 0.2*inch, current_y, "Reviewed by (NRCS Staff): _________________________  Date: __________")
-        current_y -= line_height * 1.5
-
-        # ═══════════════════════════════════════════════════════════
-        # FOOTER: IMPORTANT DISCLAIMER
-        # ═══════════════════════════════════════════════════════════
-        c.setFont("Helvetica-Bold", 9)
-        c.drawString(margin_left, current_y, "⚠️  IMPORTANT DISCLAIMER")
-        current_y -= line_height * 0.9
-
-        c.setFont("Helvetica", 7.5)
-        disclaimer = [
-            "This document is a SCREENING TOOL OUTPUT generated by the CRP HEL Screening Tool.",
-            "It is NOT an official NRCS-CPA-026 form and does NOT constitute an official NRCS HEL determination.",
-            "Official determinations must be completed by NRCS staff following 7 CFR Part 12 procedures.",
-            "All values are estimates based on available data and must be verified in the field by qualified conservationists.",
-            "For official determination, contact your local NRCS Service Center."
-        ]
-
-        for line in disclaimer:
-            c.drawString(margin_left + 0.1*inch, current_y, line)
-            current_y -= line_height * 0.8
-
-        c.save()
-        pdf_buffer.seek(0)
-        return pdf_buffer.getvalue()
-
-    except Exception as e:
-        st.error(f"Error generating PDF: {str(e)}")
-        return None
-
-
-def show_farmer_view(analysis_results, r_val, state_label, ls_factor=None, ls_source=None, df=None):
-    """
-    Display farmer-friendly results: Simple HEL/Wetland status + Next steps
-
-    Args:
-        analysis_results: SSURGO soil analysis results
-        r_val: R-factor value
-        state_label: State/source label for R-factor
-        ls_factor: LS factor value (optional)
-        ls_source: LS factor source (optional)
-        df: DataFrame with soil component data
-    """
-    if df is not None and not df.empty:
-        # Calculate EI and HEL status
-        if ls_factor is not None:
-            df["EI"] = round(
-                (r_val * df["K-Fact"] * ls_factor) / df["T-Fact"], 2
-            )
-        else:
-            df["EI"] = round(
-                (r_val * df["K-Fact"] * (df["Slope"] ** 1.2 * 0.1)) / df["T-Fact"], 2
-            )
-
-        ei_max = df["EI"].max()
-        ei_min = df["EI"].min()
-
-        # 1️⃣ MAIN RESULT: EI Card at top (prominent)
-        st.markdown(
-            f'''<div style="border: 2px solid #2196F3; border-radius: 8px; padding: 25px; text-align: center; background: #0d1b2a; margin-bottom: 20px;">
-            <p style="margin: 0; font-size: 14px; color: #64B5F6;">Erosion Index (EI)</p>
-            <p style="margin: 10px 0; font-size: 48px; font-weight: bold; color: #2196F3;">{ei_max:.1f}</p>
-            <p style="margin: 0; font-size: 12px; color: #90CAF9; cursor: help;" title="Range: {ei_min:.1f}–{ei_max:.1f}">Range: {ei_min:.1f}–{ei_max:.1f}</p>
-            </div>''',
-            unsafe_allow_html=True
-        )
-
-        # 2️⃣ KEY FACTORS: What drives your EI score
-        st.markdown("**📌 Key Factors Affecting Your Score:**")
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.markdown(
-                f'''<div style="border: 1px solid #999; border-radius: 8px; padding: 15px; text-align: center; background: #f5f5f5;">
-                <p style="margin: 0; font-size: 12px; color: #666;">💧 Rainfall</p>
-                <p style="margin: 8px 0; font-size: 24px; font-weight: bold; color: #333;">{r_val}</p>
-                <p style="margin: 0; font-size: 10px; color: #666;">Annual Erosivity</p>
-                </div>''',
-                unsafe_allow_html=True
-            )
-
-        with col2:
-            ls_display = f"{ls_factor:.2f}" if ls_factor else "~2.5"
-            st.markdown(
-                f'''<div style="border: 1px solid #999; border-radius: 8px; padding: 15px; text-align: center; background: #f5f5f5;">
-                <p style="margin: 0; font-size: 12px; color: #666;">⛰️ Slope</p>
-                <p style="margin: 8px 0; font-size: 24px; font-weight: bold; color: #333;">{ls_display}</p>
-                <p style="margin: 0; font-size: 10px; color: #666;">Length × Steepness</p>
-                </div>''',
-                unsafe_allow_html=True
-            )
-
-        with col3:
-            st.markdown(
-                f'''<div style="border: 1px solid #999; border-radius: 8px; padding: 15px; text-align: center; background: #f5f5f5;">
-                <p style="margin: 0; font-size: 12px; color: #666;">🌱 Soil Type</p>
-                <p style="margin: 8px 0; font-size: 24px; font-weight: bold; color: #333;">{len(df)}</p>
-                <p style="margin: 0; font-size: 10px; color: #666;">Soil Types Found</p>
-                </div>''',
-                unsafe_allow_html=True
-            )
-
-        st.markdown("---")
-
-        st.markdown(
-            '<div style="background:#E8F5E9;padding:15px;border-radius:8px;margin-bottom:15px;">'
-            '<h3 style="color:#2E7D32;margin:0;">🎯 HEL Eligibility Result</h3>'
-            '</div>',
-            unsafe_allow_html=True
-        )
-
-        # HEL Status
-        if ei_max >= 8.0:
-            status = "✅ LIKELY HEL"
-            color = "#D32F2F"
-            explanation = "Your field shows high erosion risk and may qualify for CRP."
-        elif ei_min < 8.0 and ei_max >= 8.0:
-            status = "⚠️ PARTIALLY HEL (PHEL)"
-            color = "#F57C00"
-            explanation = "Some soil types on your field show erosion risk. An NRCS visit can clarify."
-        else:
-            status = "❌ NOT HEL"
-            color = "#388E3C"
-            explanation = "Your field does not appear to meet HEL criteria for CRP eligibility."
-
-        st.markdown(
-            f'<div style="background:{color}20;border-left:4px solid {color};padding:15px;border-radius:4px;margin-bottom:15px;">'
-            f'<h2 style="color:{color};margin:0;">{status}</h2>'
-            f'<p style="margin:10px 0 0 0;">{explanation}</p>'
-            f'<p style="margin:5px 0 0 0;font-size:12px;color:#666;">EI Range: {ei_min:.1f} - {ei_max:.1f}</p>'
-            f'</div>',
-            unsafe_allow_html=True
-        )
-
-        st.markdown("---")
-
-        # 3️⃣ WHAT THIS MEANS (Farmer-friendly explanation)
-        st.markdown("**❓ Understanding Your Results:**")
-        explanation_text = """
-        **Erosion Index (EI):** Measures how susceptible your field is to water erosion.
-        - **EI ≥ 8.0 = "HEL"** → High erosion risk; eligible for CRP conservation programs
-        - **EI < 8.0 = "NOT HEL"** → Lower erosion risk
-
-        **What Affects Your Score:**
-        - **Rainfall:** How much rain your area receives annually
-        - **Slope:** How steep and long your field slopes are
-        - **Soil Type:** Different soils have different erosion susceptibility
-        """
-        st.info(explanation_text)
-
-        # 4️⃣ SOIL SUMMARY
-        st.markdown("**🌾 Your Soil Summary:**")
-        col_soil1, col_soil2 = st.columns(2)
-
-        problem_soils = (df["EI"] >= 8.0).sum()
-        with col_soil1:
-            st.metric("High-Risk Soil Types", problem_soils, help="Soils with EI ≥ 8.0")
-
-        hydric_count = (df["Hydric"] == "Yes").sum()
-        with col_soil2:
-            st.metric("Hydric Soils Found", "Yes" if hydric_count > 0 else "No", help="Wet/wetland soils on your field")
-
-        st.markdown("---")
-
-        # Wetland Status
-        hydric_detected = (df["Hydric"] == "Yes").any()
-        if hydric_detected:
-            st.markdown(
-                '<div style="background:#E1F5FE;border-left:4px solid #0277BD;padding:15px;border-radius:4px;margin-bottom:15px;">'
-                '<h3 style="color:#0277BD;margin:0;">💧 Wetland Soils Detected</h3>'
-                '<p style="margin:10px 0 0 0;color:#333;">Your field has hydric soils, which may be eligible for wetland restoration practices.</p>'
-                '</div>',
-                unsafe_allow_html=True
-            )
-
-    # Next Steps
-    st.markdown(
-        '<div style="background:#FFF3E0;border-left:4px solid #E65100;padding:15px;border-radius:4px;margin-bottom:15px;">'
-        '<h3 style="color:#E65100;margin:0;">📞 What Happens Next?</h3>'
-        '<ol style="margin:10px 0 0 0;color:#333;">'
-        '<li>Save this result or print it</li>'
-        '<li>Contact your local NRCS office for a formal determination</li>'
-        '<li>An NRCS conservationist will visit your field and verify the results</li>'
-        '<li>If eligible, discuss CRP enrollment options</li>'
-        '</ol>'
-        '</div>',
-        unsafe_allow_html=True
-    )
-
-    # Find NRCS Office Button
-    st.markdown("---")
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🔍 Find NRCS Office Near Me", key="find_nrcs_farmer"):
-            st.warning(
-                "⏳ **NRCS Office Locator coming soon!**\n\n"
-                "For now, visit: **[NRCS Office Locator](https://offices.sc.egov.usda.gov/)**\n\n"
-                "We're working on integrating this directly into the tool."
-            )
-
-    with col2:
-        if st.button("📋 Print Results", key="print_farmer"):
-            st.info("Use your browser's print function (Ctrl+P or Cmd+P) to save this page as PDF.")
-
-
-def show_conservationist_view(analysis_results, r_val, state_label, ls_factor=None, ls_source=None, df=None):
-    """
-    Display conservationist-focused results: Technical details + Field verification + AD1026
-
-    Args:
-        analysis_results: SSURGO soil analysis results
-        r_val: R-factor value
-        state_label: State/source label for R-factor
-        ls_factor: LS factor value (optional)
-        ls_source: LS factor source (optional)
-        df: DataFrame with soil component data
-    """
-    # Create tabs for different sections
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(
-        ["📊 Results", "🔧 Field Verification", "📋 Components", "📄 AD1026", "⚙️ Technical"]
-    )
-
-    with tab1:
-        st.subheader("Automated Analysis Results")
-
-        if df is not None and not df.empty:
-            # Calculate EI
-            if ls_factor is not None:
-                df["EI"] = round(
-                    (r_val * df["K-Fact"] * ls_factor) / df["T-Fact"], 2
-                )
-            else:
-                df["EI"] = round(
-                    (r_val * df["K-Fact"] * (df["Slope"] ** 1.2 * 0.1)) / df["T-Fact"], 2
-                )
-
-            ei_max = df["EI"].max()
-            ei_min = df["EI"].min()
-            k_avg = df["K-Fact"].mean()
-            t_avg = df["T-Fact"].mean()
-
-            # 1️⃣ MAIN RESULT: EI at top (largest)
-            st.markdown(
-                f'''<div style="border: 2px solid #2196F3; border-radius: 8px; padding: 25px; text-align: center; background: #0d1b2a; margin-bottom: 20px;">
-                <p style="margin: 0; font-size: 14px; color: #64B5F6;">Erosion Index (EI)</p>
-                <p style="margin: 10px 0; font-size: 48px; font-weight: bold; color: #2196F3;">{ei_max:.1f}</p>
-                <p style="margin: 0; font-size: 12px; color: #90CAF9; cursor: help;" title="Range: {ei_min:.1f}–{ei_max:.1f}">Range: {ei_min:.1f}–{ei_max:.1f}</p>
-                </div>''',
-                unsafe_allow_html=True
-            )
-
-            # 2️⃣ RUSLE2 PARAMETERS: R, K, LS, T in row
-            st.markdown("**📊 RUSLE2 Parameters (EI = R × K × LS / T)**")
-            col_r, col_k, col_ls, col_t = st.columns(4)
-
-            with col_r:
-                st.markdown(
-                    f'''<div style="border: 1px solid #333; border-radius: 8px; padding: 15px; text-align: center; background: #1a1a1a;">
-                    <p style="margin: 0; font-size: 12px; color: #999;">R-Factor</p>
-                    <p style="margin: 8px 0; font-size: 24px; font-weight: bold; color: #fff;">{r_val}</p>
-                    <p style="margin: 0; font-size: 10px; color: #999;">Rainfall</p>
-                    </div>''',
-                    unsafe_allow_html=True
-                )
-
-            with col_k:
-                st.markdown(
-                    f'''<div style="border: 1px solid #333; border-radius: 8px; padding: 15px; text-align: center; background: #1a1a1a;">
-                    <p style="margin: 0; font-size: 12px; color: #999;">K-Factor</p>
-                    <p style="margin: 8px 0; font-size: 24px; font-weight: bold; color: #fff;">{k_avg:.3f}</p>
-                    <p style="margin: 0; font-size: 10px; color: #999;">Soil Erodibility</p>
-                    </div>''',
-                    unsafe_allow_html=True
-                )
-
-            with col_ls:
-                ls_display = f"{ls_factor:.3f}" if ls_factor else "approx"
-                st.markdown(
-                    f'''<div style="border: 1px solid #333; border-radius: 8px; padding: 15px; text-align: center; background: #1a1a1a;">
-                    <p style="margin: 0; font-size: 12px; color: #999;">LS-Factor</p>
-                    <p style="margin: 8px 0; font-size: 24px; font-weight: bold; color: #fff;">{ls_display}</p>
-                    <p style="margin: 0; font-size: 10px; color: #999;">Slope</p>
-                    </div>''',
-                    unsafe_allow_html=True
-                )
-
-            with col_t:
-                st.markdown(
-                    f'''<div style="border: 1px solid #333; border-radius: 8px; padding: 15px; text-align: center; background: #1a1a1a;">
-                    <p style="margin: 0; font-size: 12px; color: #999;">T-Factor</p>
-                    <p style="margin: 8px 0; font-size: 24px; font-weight: bold; color: #fff;">{t_avg:.2f}</p>
-                    <p style="margin: 0; font-size: 10px; color: #999;">Tolerance</p>
-                    </div>''',
-                    unsafe_allow_html=True
-                )
-
-            st.markdown("---")
-
-            # 3️⃣ HEL STATUS & HYDRIC SOILS
-            col1, col2, col3 = st.columns(3)
-
-            with col1:
-                if ei_max >= 8.0:
-                    st.markdown(
-                        '''<div style="border: 1px solid #333; border-radius: 8px; padding: 20px; text-align: center; background: #1a1a1a;">
-                        <p style="margin: 0; font-size: 14px; color: #999;">HEL Status</p>
-                        <p style="margin: 10px 0; font-size: 32px; font-weight: bold; color: #fff;">HEL</p>
-                        <p style="margin: 0; font-size: 12px; color: #4CAF50; cursor: help;" title="✅ Eligible for CRP HEL program">✓ Eligible for CRP</p>
-                        </div>''',
-                        unsafe_allow_html=True
-                    )
-                else:
-                    st.markdown(
-                        '''<div style="border: 1px solid #333; border-radius: 8px; padding: 20px; text-align: center; background: #1a1a1a;">
-                        <p style="margin: 0; font-size: 14px; color: #999;">HEL Status</p>
-                        <p style="margin: 10px 0; font-size: 32px; font-weight: bold; color: #fff;">NOT HEL</p>
-                        <p style="margin: 0; font-size: 12px; color: #f44336; cursor: help;" title="❌ Field does not meet HEL criteria">❌ Not eligible</p>
-                        </div>''',
-                        unsafe_allow_html=True
-                    )
-
-            with col2:
-                st.markdown(
-                    '''<div style="border: 1px solid #333; border-radius: 8px; padding: 20px; text-align: center; background: #1a1a1a;">
-                    <p style="margin: 0; font-size: 14px; color: #999;">Soil Count</p>
-                    <p style="margin: 10px 0; font-size: 32px; font-weight: bold; color: #fff;">''' + str(len(df)) + '''</p>
-                    <p style="margin: 0; font-size: 12px; color: #64B5F6;">Soil types analyzed</p>
-                    </div>''',
-                    unsafe_allow_html=True
-                )
-
-            with col3:
-                hydric = "Yes" if (df["Hydric"] == "Yes").any() else "No"
-                hydric_color = "#4CAF50" if hydric == "Yes" else "#4CAF50"
-                hydric_tooltip = "🌾 Hydric soils detected on this field" if hydric == "Yes" else "✓ No hydric soils detected"
-                st.markdown(
-                    f'''<div style="border: 1px solid #333; border-radius: 8px; padding: 20px; text-align: center; background: #1a1a1a;">
-                    <p style="margin: 0; font-size: 14px; color: #999;">Hydric Soils</p>
-                    <p style="margin: 10px 0; font-size: 32px; font-weight: bold; color: #fff;">{hydric}</p>
-                    <p style="margin: 0; font-size: 12px; color: {hydric_color}; cursor: help;" title="{hydric_tooltip}">↑ {hydric_tooltip}</p>
-                    </div>''',
-                    unsafe_allow_html=True
-                )
-
-            # Note: Detailed soil component analysis is in the Components tab
-            st.info("📋 **Detailed soil component data** (with HEL status per soil) is available in the **Components** tab")
-
-    with tab2:
-        st.subheader("Field Verification (Optional)")
-        st.info("🌾 Enter field-measured slope data to verify/refine the automated results. Updates in real-time! ⚡")
-
-        col1, col2 = st.columns(2)
-
-        # Get automated defaults from session state, or use reasonable fallbacks
-        auto_slope_length = st.session_state.get("auto_slope_length", 100.0)
-        auto_slope_steepness = st.session_state.get("auto_slope_steepness", 5.0)
-
-        with col1:
-            field_slope_length = st.number_input(
-                "Slope Length (feet)",
-                min_value=1.0,
-                value=auto_slope_length if auto_slope_length else 100.0,
-                step=1.0,
-                help="Distance from top to bottom of slope (measured in field). Default shows DEM-calculated estimate."
-            )
-
-        with col2:
-            field_slope_steepness = st.number_input(
-                "Slope Steepness (%)",
-                min_value=0.1,
-                value=auto_slope_steepness if auto_slope_steepness else 5.0,
-                max_value=100.0,
-                step=0.1,
-                help="Average slope gradient percentage. Default shows DEM-calculated estimate."
-            )
-
-        # Real-time calculation (no button needed)
-        if field_slope_length > 0 and field_slope_steepness > 0:
-            # Calculate LS from field measurements (RUSLE2 formula: LS = L × S)
-            # L = (slope_length_ft / 72.6)^0.6  [converts feet to standardized slope length]
-            # S = steepness factor based on percent slope
-            field_L = (field_slope_length / 72.6) ** 0.6
-            if field_slope_steepness >= 9:
-                field_S = 1.05 + 0.305 * (field_slope_steepness / 100)  # steep slope
-            else:
-                field_S = 10.8 * (field_slope_steepness / 100) ** 0.6  # gentle slope
-            field_ls = field_L * field_S
-
-            # Recalculate EI with field LS
-            field_ei_max = round((r_val * df["K-Fact"].max() * field_ls) / df["T-Fact"].min(), 2)
-            automated_ei_max = round((r_val * df["K-Fact"].max() * ls_factor) / df["T-Fact"].min(), 2) if ls_factor else None
-
-            # Display real-time comparison
-            st.markdown("---")
-            st.subheader("📊 Live Comparison")
-
-            # LS-Factor Comparison (2 columns for better readability)
-            st.markdown("**LS-Factor (Slope Length × Slope Steepness):**")
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Field-Measured LS", f"{field_ls:.3f}", "from your input data")
-            with col2:
-                ls_display = f"{ls_factor:.3f}" if ls_factor else "approximated"
-                st.metric("Automated LS (DEM)", ls_display, ls_source)
-
-            # LS Difference
-            ls_diff = field_ls - (ls_factor if ls_factor else 0)
-            pct_diff = (ls_diff/(ls_factor if ls_factor else 1)*100) if ls_factor else 0
-            st.info(f"**Difference:** {ls_diff:+.3f} ({pct_diff:+.1f}%) — {'Field steeper' if ls_diff > 0 else 'DEM steeper' if ls_diff < 0 else 'Match'}")
-
-            st.markdown("---")
-
-            # EI Comparison (2 columns for better readability)
-            st.markdown("**Erosion Index (EI) — HEL Determination:**")
-            col1, col2 = st.columns(2)
-            with col1:
-                hel_field = "✅ HEL" if field_ei_max >= 8.0 else "❌ NOT HEL"
-                st.metric("Field-Based EI", f"{field_ei_max:.1f}", hel_field)
-            with col2:
-                if automated_ei_max:
-                    hel_auto = "✅ HEL" if automated_ei_max >= 8.0 else "❌ NOT HEL"
-                    st.metric("Automated EI (DEM)", f"{automated_ei_max:.1f}", hel_auto)
-                else:
-                    st.metric("Automated EI (DEM)", "N/A", "—")
-
-            # EI Impact
-            if automated_ei_max:
-                ei_diff = field_ei_max - automated_ei_max
-                direction = "↑ Field Higher" if ei_diff > 0.5 else "↓ DEM Higher" if ei_diff < -0.5 else "≈ Similar"
-                st.info(f"**EI Difference:** {ei_diff:+.1f} points — {direction}")
-
-            st.info(
-                "💡 **Field verification tip:** If field-based EI differs significantly from automated, "
-                "it may indicate DEM limitations in steep/complex terrain. Use field-measured data for official determinations."
-            )
-
-    with tab3:
-        st.subheader("Soil Components")
-        if df is not None and not df.empty:
-            # Add HEL/PHEL status column per soil type
-            display_df = df.copy()
-
-            # Calculate HEL/PHEL status for each soil based on its EI
-            display_df["HEL Status"] = display_df["EI"].apply(
-                lambda ei: "✅ HEL" if ei >= 8.0 else "❌ NOT HEL"
-            )
-
-            # Select columns for display: Soil Type, Slope, K-Fact, T-Fact, EI, HEL Status, Hydric
-            cols_to_show = ["Soil Type", "Slope", "K-Fact", "T-Fact", "EI", "HEL Status", "Hydric", "Drainage"]
-            display_df = display_df[[col for col in cols_to_show if col in display_df.columns]]
-
-            st.dataframe(display_df, use_container_width=True)
-
-            # Summary info
-            hel_soils = display_df[display_df["HEL Status"] == "✅ HEL"]["Soil Type"].tolist()
-            if hel_soils:
-                st.info(f"🚨 **Problem Soils (HEL):** {', '.join(hel_soils)}")
-            else:
-                st.success("✅ **No HEL soils detected** on this site")
-
-    with tab4:
-        st.subheader("📋 NRCS-CPA-026 Form (Pre-filled)")
-        st.info("✅ **Download pre-filled NRCS-CPA-026** form with tool-calculated RUSLE2 parameters. This is the NRCS HEL determination form (not the FSA AD-1026 certification form).")
-
-        if df is not None and not df.empty:
-            # Display form data preview
-            st.markdown("**📊 Pre-fill Data Summary:**")
-
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("R-Factor (Rainfall)", r_val, state_label)
-                st.metric("K-Factor (avg)", f"{df['K-Fact'].mean():.4f}", f"Range: {df['K-Fact'].min():.4f}–{df['K-Fact'].max():.4f}")
-
-            with col2:
-                ls_display = f"{ls_factor:.3f}" if ls_factor else "Approximated"
-                st.metric("LS-Factor (Slope)", ls_display, ls_source)
-                st.metric("T-Factor (avg)", f"{df['T-Fact'].mean():.2f}", f"Range: {df['T-Fact'].min():.2f}–{df['T-Fact'].max():.2f}")
-
-            st.markdown("---")
-
-            # EI Summary
-            st.markdown("**Erosion Index (EI) Result:**")
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Maximum EI", f"{ei_max:.2f}", "Highest soil type")
-            with col2:
-                st.metric("Minimum EI", f"{ei_min:.2f}", "Lowest soil type")
-            with col3:
-                hel_status = "✅ HEL" if ei_max >= 8.0 else "❌ NOT HEL"
-                st.metric("HEL Status", hel_status, "7 CFR § 12.21")
-
-            st.markdown("---")
-
-            # Download buttons
-            st.markdown("**📥 Download Options:**")
-            col1, col2, col3 = st.columns(3)
-
-            with col1:
-                # Get coordinates from session state
-                center_lat = st.session_state.get("center_lat", 0)
-                center_lon = st.session_state.get("center_lon", 0)
-
-                # Generate NRCS-CPA-026 PDF
-                pdf_data = generate_cpa026_pdf(r_val, state_label, ls_factor, ls_source, df, ei_max, ei_min, center_lat, center_lon)
-                if pdf_data:
-                    st.download_button(
-                        label="📄 NRCS-CPA-026 PDF",
-                        data=pdf_data,
-                        file_name=f"NRCS-CPA-026_HEL_Determination_{datetime.now().strftime('%Y%m%d')}.pdf",
-                        mime="application/pdf",
-                        key="download_cpa026_pdf"
-                    )
-
-            with col2:
-                # CSV export
-                csv_export = df[["Soil Type", "Slope", "K-Fact", "T-Fact", "EI"]].to_csv(index=False)
-                st.download_button(
-                    label="📊 Soil Data CSV",
-                    data=csv_export,
-                    file_name=f"HEL_Soil_Analysis_{datetime.now().strftime('%Y%m%d')}.csv",
-                    mime="text/csv",
-                    key="download_soil_csv"
-                )
-
-            with col3:
-                st.info("💡 **Tip:** NRCS staff will verify and sign the form after field visit")
-
-            st.markdown("---")
-
-            # Form information
-            st.markdown("**📋 About This Form:**")
-            st.markdown("""
-            - **NRCS-CPA-026:** Official NRCS form for documenting HEL/Wetland determinations
-            - **Purpose:** Used by NRCS to document findings; producer files AD-1026 (FSA) separately
-            - **Status:** This PDF is pre-filled with screening calculations (NOT official until NRCS signs)
-            - **Next Step:** Bring this to your local NRCS office for field verification and official signature
-            """)
-
-            st.markdown("---")
-
-            # Important disclaimer
-            st.warning(
-                "⚠️ **IMPORTANT DISCLAIMER:** This is a screening tool output, NOT an official NRCS form. "
-                "Official HEL determinations require NRCS field visit and staff signature per 7 CFR § 12.20–12.30. "
-                "Always verify with NRCS before CRP application."
-            )
-
-    with tab5:
-        st.subheader("Technical Details & Data Sources")
-
-        # Section 1: RUSLE2 Parameters with Sources
-        st.markdown("**📊 RUSLE2 Calculation Parameters**")
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("R-Factor", r_val, state_label)
-        with col2:
-            st.metric("K-Factor (Avg)", f"{df['K-Fact'].mean():.3f}", "SSURGO")
-        with col3:
-            st.metric("LS Factor", f"{ls_factor:.3f}" if ls_factor else "approx.", ls_source)
-        with col4:
-            st.metric("T-Factor (Avg)", f"{df['T-Fact'].mean():.2f}", "SSURGO")
-
-        st.markdown("---")
-
-        # Section 2: Data Quality & Uncertainty
-        st.markdown("**⚠️ Accuracy & Confidence**")
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.info(
-                f"**R-Factor Source:** {state_label}\n\n"
-                f"• NOAA CDO: ±5-8% accuracy (point-specific)\n"
-                f"• NRCS FOTG: ±20-30% accuracy (state average)\n\n"
-                f"**Current:** {state_label}"
-            )
-
-        with col2:
-            st.info(
-                f"**LS Factor Source:** {ls_source}\n\n"
-                f"• DEM-based: ±5% accuracy (USGS 3DEP 30m)\n"
-                f"• Slope Approx: ±23% accuracy (fallback)\n\n"
-                f"**Current:** {ls_source}"
-            )
-
-        st.markdown("---")
-
-        # Section 3: Soil Data Range
-        st.markdown("**🌱 Soil Parameter Ranges (K-Factor, T-Factor)**")
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.write(f"**K-Factor Range:**")
-            st.write(f"• Min: {df['K-Fact'].min():.4f}")
-            st.write(f"• Max: {df['K-Fact'].max():.4f}")
-            st.write(f"• Avg: {df['K-Fact'].mean():.4f}")
-
-        with col2:
-            st.write(f"**T-Factor Range:**")
-            st.write(f"• Min: {df['T-Fact'].min():.2f}")
-            st.write(f"• Max: {df['T-Fact'].max():.2f}")
-            st.write(f"• Avg: {df['T-Fact'].mean():.2f}")
-
-        st.markdown("---")
-
-        # Section 4: Data Sources & Disclaimers
-        st.markdown("**📍 Data Sources**")
-        st.markdown(
-            """
-            • **R-Factor**: NOAA Climate Data Online (CDO) API or NRCS FOTG
-            • **K-Factor**: USDA SSURGO Database (Natural Resources Conservation Service)
-            • **LS-Factor**: USGS 3DEP 30m Digital Elevation Model
-            • **T-Factor**: USDA SSURGO Database
-            • **Hydric Soil**: USDA SSURGO Soil Properties
-
-            **⚠️ Limitations:**
-            - LS factor uses D8 flow accumulation (NRCS uses field-measured slope length)
-            - R-factor relies on point-specific precipitation (may differ in complex terrain)
-            - Results are indicative only — NOT an official RUSLE2 or HEL determination
-            """
-        )
 
 
 # --- 6. Main Content: Map + Results ---
@@ -1812,11 +965,7 @@ with col_map:
             st.session_state["center_lon"]        = c_lon
             # Store bounds for wetland assessment (drawn polygon bounds)
             st.session_state["drawn_bounds"]      = [min(lats), min(lons), max(lats), max(lons)]
-            noaa_r, noaa_label = get_noaa_r_factor(c_lat, c_lon, debug=debug_mode)
-            if noaa_r:
-                st.session_state["detected_r"] = (noaa_r, noaa_label, "NOAA CDO")
-            else:
-                st.session_state["detected_r"] = get_state_r_factor(c_lat, c_lon, debug=debug_mode)
+            st.session_state["detected_r"]        = get_state_r_factor(c_lat, c_lon, debug=debug_mode)
 
             _, state_label, _ = st.session_state["detected_r"]
             with st.spinner(f"Fetching soil data ({state_label})..."):
@@ -1827,89 +976,28 @@ with col_map:
 
 
 with col_res:
-    # Check if analysis has been run
-    if not st.session_state["analysis_results"]:
-        # ═══════════════════════════════════════════════════════════
-        # GETTING STARTED: Show intro card before first analysis
-        # ═══════════════════════════════════════════════════════════
-        # Different instructions based on user mode
-        if conservationist_mode:
-            st.markdown(
-                '''
-                <div style="background:#E8F5E9;border-left:4px solid #388E3C;padding:20px;border-radius:8px;margin-bottom:20px;">
-                <h3 style="color:#2E7D32;margin-top:0;">👨‍🌾 Conservationist Workspace</h3>
-                <p style="color:#333;margin:10px 0;">Verify field data, generate AD1026 forms, and access technical RUSLE2 parameters.</p>
+    st.subheader("Field Analysis")
 
-                <h4 style="color:#2E7D32;">📋 Workflow:</h4>
-                <ol style="color:#333;margin-left:20px;">
-                    <li><strong>Draw Polygon or Enter Coordinates</strong> — Define field boundary (⚡ polygon auto-analyzes)</li>
-                    <li><strong>View Results Tab</strong> — Check automated HEL status and EI metrics</li>
-                    <li><strong>Field Verification Tab</strong> — Enter measured slope length & steepness from site visit</li>
-                    <li><strong>AD1026 Tab</strong> — Download pre-filled form for FSA submission</li>
-                    <li><strong>Technical Tab</strong> — Review R, K, LS, T factors and uncertainty flags</li>
-                </ol>
+    # R-factor banner — always visible once state detected
+    r_val, state_label, method = st.session_state["detected_r"]
 
-                <h4 style="color:#2E7D32;">🔍 Key Features:</h4>
-                <ul style="color:#333;margin-left:20px;">
-                    <li><strong>Field Data Override</strong> — Compare automated vs. measured slopes</li>
-                    <li><strong>Form Integration</strong> — AD1026 pre-fill reduces paperwork by 30+ min</li>
-                    <li><strong>RUSLE2 Transparency</strong> — See all calculation parameters and sources</li>
-                </ul>
-                </div>
-                ''',
-                unsafe_allow_html=True
-            )
-        else:
-            st.markdown(
-                '''
-                <div style="background:#E3F2FD;border-left:4px solid #1976D2;padding:20px;border-radius:8px;margin-bottom:20px;">
-                <h3 style="color:#1565C0;margin-top:0;">🌾 Welcome to CRP HEL Screening Tool</h3>
-                <p style="color:#333;margin:10px 0;">Get a quick assessment of your field's erosion risk and CRP eligibility.</p>
+    # Display R-factor with source information
+    st.markdown(
+        f"**R-Factor (Rainfall Erosivity):** {r_val} | **Source:** {state_label}",
+        unsafe_allow_html=True
+    )
 
-                <h4 style="color:#1565C0;">📋 How to Use:</h4>
-                <ol style="color:#333;margin-left:20px;">
-                    <li><strong>Draw Polygon on Map</strong> — Draw your field boundary on the map (⚡ auto-analyzes instantly)</li>
-                    <li><strong>OR Enter Coordinates</strong> — Use the sidebar to enter lat/lon values, then click <strong>"🚀 Analyze"</strong></li>
-                    <li><strong>View Results</strong> — Get your HEL eligibility status (✅ HEL, ⚠️ PHEL, or ❌ NOT HEL)</li>
-                    <li><strong>Contact NRCS</strong> — Find your local office for official determination</li>
-                </ol>
+    st.markdown(
+        f'<div class="r-banner">'
+        f'📍 <b>Detected State:</b> {state_label}<br>'
+        f'🌧️ <b>Applied R-Factor:</b> {r_val} '
+        f'<span style="font-size:11px;color:#888;">(NRCS FOTG state average)</span>'
+        f'</div>',
+        unsafe_allow_html=True
+    )
 
-                <h4 style="color:#1565C0;">💡 Try an Example:</h4>
-                <p style="color:#333;">Use "National Search" in the sidebar to jump to pre-loaded test regions:</p>
-                <ul style="color:#333;margin-left:20px;">
-                    <li><strong>Boone, IA</strong> — High erosion example (HEL likely)</li>
-                    <li><strong>Ames, IA</strong> — Flat terrain (NOT HEL)</li>
-                    <li><strong>Palouse, WA</strong> — Extreme slopes (PHEL)</li>
-                </ul>
-                </div>
-                ''',
-                unsafe_allow_html=True
-            )
-    else:
-        # ═══════════════════════════════════════════════════════════
-        # FIELD ANALYSIS: Show after first analysis runs
-        # ═══════════════════════════════════════════════════════════
-        st.subheader("Field Analysis")
-
-        # R-factor (get values for calculation)
-        r_val, state_label, method = st.session_state["detected_r"]
-
-        # Determine if using NOAA (point-specific) or FOTG (state average)
-        source_type = "Point-Specific (NOAA CDO)" if "NOAA" in state_label else "State Average (NRCS FOTG)"
-        source_icon = "🎯" if "NOAA" in state_label else "🗺️"
-
-        # Display R-factor in clean card (no redundancy)
-        st.markdown(
-            f'<div class="r-banner">'
-            f'📍 <b>Data Source:</b> {state_label}<br>'
-            f'{source_icon} <b>Applied R-Factor:</b> {r_val} '
-            f'<span style="font-size:11px;color:#888;">({source_type})</span>'
-            f'</div>',
-            unsafe_allow_html=True
-        )
-
-        # LS factor display (will be populated after soil data analysis)
-        ls_display_placeholder = st.empty()
+    # LS factor display (will be populated after soil data analysis)
+    ls_display_placeholder = st.empty()
 
     # Debug info (if debug mode enabled)
     if debug_mode:
@@ -1946,79 +1034,26 @@ with col_res:
             else:
                 # EI = (R × K × LS) / T
                 # Try DEM-based LS calculation first, fall back to approximation if it fails
-                ls_dem, is_dem_based, l_factor_avg, s_factor_avg, slope_pct_avg = calculate_ls_factor_from_dem(
+                ls_dem, is_dem_based = calculate_ls_factor_from_dem(
                     st.session_state.get("center_lat", 0),
                     st.session_state.get("center_lon", 0)
                 )
 
-                # Store DEM components in session state for field verification defaults
                 if ls_dem is not None:
                     # Use DEM-based LS (more accurate)
                     ls_factor = ls_dem
                     ls_source = "DEM-based (±5% error)"
-                    # Convert L-factor to approximate slope length in feet
-                    # L-factor = (flow_accum * 30 / 22.13)^0.4, so reverse:
-                    # flow_accum = ((L_factor) ^ (1/0.4)) * 22.13 / 30
-                    est_slope_length = max(50, min(300, (l_factor_avg ** 2.5) * 72.6))  # Bounds: 50-300 feet
-                    est_slope_steepness = max(0.5, min(30, slope_pct_avg))  # Bounds: 0.5-30%
-                    st.session_state["auto_slope_length"] = est_slope_length
-                    st.session_state["auto_slope_steepness"] = est_slope_steepness
                 else:
                     # Fallback to approximation (less accurate)
                     ls_factor = None  # Will use per-row calculation below
                     ls_source = "Slope approximation (±23% error)"
-                    st.session_state["auto_slope_length"] = None
-                    st.session_state["auto_slope_steepness"] = None
 
-                # =================================================================
-                # TWO-TIER UI: Call appropriate view based on user mode
-                # =================================================================
-                if conservationist_mode:
-                    # Conservationist workspace with tabs
-                    st.divider()
-                    show_conservationist_view(
-                        analysis_results=res,
-                        r_val=r_val,
-                        state_label=state_label,
-                        ls_factor=ls_factor,
-                        ls_source=ls_source,
-                        df=df
-                    )
-                else:
-                    # Farmer-friendly simple results
-                    st.divider()
-                    show_farmer_view(
-                        analysis_results=res,
-                        r_val=r_val,
-                        state_label=state_label,
-                        ls_factor=ls_factor,
-                        ls_source=ls_source,
-                        df=df
-                    )
-
-                # Display LS factor (for both modes)
+                # Display LS factor
                 if ls_factor is not None:
                     ls_display_placeholder.markdown(
                         f'<div class="r-banner">'
                         f'📏 <b>LS Factor:</b> {ls_factor:.3f} '
                         f'<span style="font-size:11px;color:#888;">({ls_source})</span>'
-                        f'</div>',
-                        unsafe_allow_html=True
-                    )
-
-                # Display RUSLE2 Parameters Summary (R, K, LS, T)
-                if not df.empty:
-                    k_avg = df["K-Fact"].mean()
-                    t_avg = df["T-Fact"].mean()
-                    ls_display = f"{ls_factor:.3f}" if ls_factor else "approx"
-
-                    st.markdown(
-                        f'<div class="r-banner">'
-                        f'📊 <b>RUSLE2 Parameters:</b><br>'
-                        f'<span style="font-size:11px;">'
-                        f'R={r_val} | K={k_avg:.3f} (avg) | LS={ls_display} | T={t_avg:.2f} (avg)<br>'
-                        f'<i>EI = (R × K × LS) / T</i>'
-                        f'</span>'
                         f'</div>',
                         unsafe_allow_html=True
                     )
@@ -2125,14 +1160,13 @@ with col_res:
                     if len(bounds_list) >= 2:
                         bounds = [bounds_list[0][0], bounds_list[0][1], bounds_list[1][0], bounds_list[1][1]]
 
-                # DEBUG: Only show debug info if debug mode enabled
-                if debug_mode:
-                    with st.expander("🔍 Wetland Assessment Debug Info"):
-                        st.write(f"**WETLAND_FEATURES_AVAILABLE:** {WETLAND_FEATURES_AVAILABLE}")
-                        st.write(f"**bounds extracted:** {bounds is not None}")
-                        st.write(f"**assessment will run:** {WETLAND_FEATURES_AVAILABLE and bounds}")
-                        if bounds:
-                            st.write(f"**bounds coords:** {bounds}")
+                # DEBUG: Always show why assessment might not run
+                with st.expander("🔍 Wetland Assessment Debug Info"):
+                    st.write(f"**WETLAND_FEATURES_AVAILABLE:** {WETLAND_FEATURES_AVAILABLE}")
+                    st.write(f"**bounds extracted:** {bounds is not None}")
+                    st.write(f"**assessment will run:** {WETLAND_FEATURES_AVAILABLE and bounds}")
+                    if bounds:
+                        st.write(f"**bounds coords:** {bounds}")
 
                 if WETLAND_FEATURES_AVAILABLE and bounds:
                     try:
@@ -2388,7 +1422,7 @@ with col_res:
                 <tr style="border-bottom:1px solid #334155;">
                   <td style="padding:8px; color:#cbd5e1;"><b>LS</b></td>
                   <td style="padding:8px; color:#cbd5e1;">Approximated</td>
-                  <td style="padding:8px; color:#cbd5e1;">Slope Length &amp; Steepness (calculated from USGS 3DEP 30m DEM — true L × S formula, ±5% error; falls back to Slope<sup>1.2</sup> × 0.1 if DEM unavailable)</td>
+                  <td style="padding:8px; color:#cbd5e1;">Slope Length & Steepness (calculated as Slope<sup>1.2</sup> × 0.1; ±23% variance due to slope length unavailable in SSURGO)</td>
                 </tr>
                 <tr style="background-color:#020617;">
                   <td style="padding:8px; color:#cbd5e1;"><b>EI</b></td>
