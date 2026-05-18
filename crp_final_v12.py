@@ -833,9 +833,6 @@ with st.sidebar:
 
     st.divider()
 
-    # ── Debug Mode ───────────────────────────────────────────────────────
-    debug_mode = st.checkbox("🐛 Enable NOAA Debug Logging", value=False)
-
     st.divider()
 
     # ── Precision Entry ──────────────────────────────────────────────────
@@ -1909,19 +1906,6 @@ with col_res:
 
         # LS factor display (will be populated after soil data analysis)
         ls_display_placeholder = st.empty()
-
-    # Debug info (if debug mode enabled)
-    if debug_mode:
-        with st.expander("🐛 NOAA Debug Info", expanded=True):
-            st.write(f"**R-Factor Source:** {state_label}")
-            st.write(f"**Value:** {r_val}")
-
-            if st.session_state.get("debug_logs"):
-                st.write("**API Call Log:**")
-                for log in st.session_state["debug_logs"]:
-                    st.write(log)
-            else:
-                st.info("No debug logs yet. Run an analysis to see NOAA API details.")
 
     if st.session_state["analysis_results"]:
         res = st.session_state["analysis_results"]
