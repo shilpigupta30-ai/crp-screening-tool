@@ -1630,14 +1630,15 @@ def show_conservationist_view(analysis_results, r_val, state_label, ls_factor=No
 
             # EI Summary
             st.markdown("**Erosion Index (EI) Result:**")
-            col1, col2, col3 = st.columns(3)
+            col1, col2 = st.columns(2)
             with col1:
                 st.metric("Maximum EI", f"{ei_max:.2f}", "Highest soil type")
             with col2:
                 st.metric("Minimum EI", f"{ei_min:.2f}", "Lowest soil type")
-            with col3:
-                hel_status = "✅ HEL" if ei_max >= 8.0 else "❌ NOT HEL"
-                st.metric("HEL Status", hel_status, "7 CFR § 12.21")
+
+            hel_status = "✅ HEL" if ei_max >= 8.0 else "❌ NOT HEL"
+            status_color = "error" if ei_max >= 8.0 else "success"
+            st.metric("🔍 HEL Determination", hel_status, "Per 7 CFR § 12.21")
 
             st.markdown("---")
 
@@ -1700,15 +1701,13 @@ def show_conservationist_view(analysis_results, r_val, state_label, ls_factor=No
 
         # Section 1: RUSLE2 Parameters with Sources
         st.markdown("**📊 RUSLE2 Calculation Parameters**")
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2 = st.columns(2)
         with col1:
-            st.metric("R-Factor", r_val, state_label)
+            st.metric("R-Factor (Rainfall)", r_val, state_label)
+            st.metric("LS Factor (Slope)", f"{ls_factor:.3f}" if ls_factor else "Approx.", ls_source)
         with col2:
-            st.metric("K-Factor (Avg)", f"{df['K-Fact'].mean():.3f}", "SSURGO")
-        with col3:
-            st.metric("LS Factor", f"{ls_factor:.3f}" if ls_factor else "approx.", ls_source)
-        with col4:
-            st.metric("T-Factor (Avg)", f"{df['T-Fact'].mean():.2f}", "SSURGO")
+            st.metric("K-Factor (Soil Avg)", f"{df['K-Fact'].mean():.3f}", "SSURGO")
+            st.metric("T-Factor (Tolerance Avg)", f"{df['T-Fact'].mean():.2f}", "SSURGO")
 
         st.markdown("---")
 
