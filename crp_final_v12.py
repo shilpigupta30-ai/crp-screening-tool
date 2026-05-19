@@ -2322,29 +2322,43 @@ with col_res:
                     # Add detailed wetland indicators table for conservationists
                     st.markdown("**📊 Detailed Wetland Indicators Assessment:**")
 
+                    # Build detailed evidence for each indicator
+                    veg_evidence = "—"
+                    if vegetation and assessment["indicators"]["wetland_vegetation"]:
+                        nlcd_class = vegetation.get("nlcd_class", "N/A")
+                        veg_type = vegetation.get("vegetation_type", "Wetland vegetation")
+                        veg_evidence = f"NLCD Class {nlcd_class}: {veg_type}"
+
+                    hydrology_nhd_evidence = "—"
+                    if nhd_proximity and assessment["indicators"]["hydrology_nhd"]:
+                        wetland_type = nhd_proximity.get("wetland_type", "Water body")
+                        nwi_attr = nhd_proximity.get("nwi_attribute", "")
+                        signal = nhd_proximity.get("hydrology_signal", "")
+                        hydrology_nhd_evidence = f"{wetland_type} (NWI: {nwi_attr}) - {signal} signal"
+
                     wetland_table_data = [
                         {
                             "Indicator": "Hydric Soils",
                             "Detected": "✅ Yes" if assessment["indicators"]["hydric_soils"] else "❌ No",
-                            "Evidence": "SSURGO hydricrating field indicates wetland-forming soils",
-                            "Confidence": "High"
+                            "Evidence": "SSURGO hydricrating indicates wetland-forming soils (hydric rating present)",
+                            "Confidence": "High" if assessment["indicators"]["hydric_soils"] else "—"
                         },
                         {
                             "Indicator": "Hydrophytic Vegetation",
                             "Detected": "✅ Yes" if assessment["indicators"]["wetland_vegetation"] else "❌ No",
-                            "Evidence": f"NLCD {vegetation.get('vegetation_type', 'wetland vegetation') if vegetation else 'N/A'}",
+                            "Evidence": veg_evidence,
                             "Confidence": "High" if assessment["indicators"]["wetland_vegetation"] else "—"
                         },
                         {
                             "Indicator": "Wetland Hydrology (Water Table)",
                             "Detected": "✅ Yes" if assessment["indicators"]["hydrology_ssurgo"] else "❌ No",
-                            "Evidence": "SSURGO comonth indicates shallow water table (≤30cm)",
+                            "Evidence": "SSURGO drainage class indicates poorly drained soils (≤30cm water table)",
                             "Confidence": "High" if assessment["indicators"]["hydrology_ssurgo"] else "—"
                         },
                         {
                             "Indicator": "Proximity to Water Body",
                             "Detected": "✅ Yes" if assessment["indicators"]["hydrology_nhd"] else "❌ No",
-                            "Evidence": "NHD database within 5km search radius",
+                            "Evidence": hydrology_nhd_evidence if hydrology_nhd_evidence != "—" else "NHD/NWI database shows no mapped wetland within 5km",
                             "Confidence": "High" if assessment["indicators"]["hydrology_nhd"] else "—"
                         }
                     ]
