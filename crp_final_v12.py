@@ -578,6 +578,15 @@ def fetch_nrcs_data(wkt):
     try:
         response = requests.post(url, data=payload, timeout=60)
         response.raise_for_status()
+
+        # Check if response is HTML (maintenance, error page, etc.)
+        if response.text.strip().startswith("<"):
+            # Extract maintenance message if present
+            if "maintenance" in response.text.lower():
+                return {"error": "🔧 NRCS Soil Data Access is under scheduled maintenance. Please try again in a few minutes (maintenance window: 12:30-12:45 AM CST daily)."}
+            else:
+                return {"error": f"USDA API returned error page. Response: {response.text[:300]}"}
+
         data = response.json()
         if not isinstance(data, dict):
             return {"error": "Unexpected API response format"}
