@@ -175,6 +175,75 @@ def get_nhd_proximity(lat: float, lon: float, search_radius_km: float = 5.0) -> 
         return None
 
 
+def get_ssurgo_water_table(lat: float, lon: float) -> Optional[float]:
+    """
+    Fetch water table depth from SSURGO comonth data via SDA (Soil Data Access) API.
+
+    Returns:
+        Water table depth in cm (representative annual depth), or None if unavailable
+
+    Logic:
+    1. Query SDA for dominant soil component at coordinates
+    2. Fetch comonth table for that component (seasonal water table data)
+    3. Return representative (average) water table depth across months
+
+    Source: NRCS Soil Data Access (SDA) API
+    """
+    try:
+        # SDA REST API endpoint
+        url = "https://sdmdataaccess.nrcs.usda.gov/Tabular/SDMTabularService/post"
+
+        # Query: Get comonth water table depths for dominant component at this location
+        # comonth.watertab_r = representative water table depth (cm) — most reliable single value
+        query = f"""
+        SELECT TOP 1
+            compname,
+            watertab_r
+        FROM
+            component c
+        INNER JOIN comonth cm ON c.cokey = cm.cokey
+        INNER JOIN SpatialVersion sv ON c.spatialversion_id = sv.spatialversion_id
+        WHERE
+            sv.spatialversionkey IN (
+                SELECT spatialversionkey FROM SpatialVersion
+                WHERE mukey IN (
+                    SELECT mukey FROM mapunit
+                    WHERE mukey = (
+                        SELECT mukey FROM gSSURGO
+                        WHERE ST_Contains(geom, ST_GeomFromText('POINT({lon} {lat})', 4326))
+                        LIMIT 1
+                    )
+                )
+            )
+        ORDER BY c.comppct_r DESC
+        """
+
+        params = {
+            "query": query.strip()
+        }
+
+        response = requests.post(url, data=params, timeout=15)
+        response.raise_for_status()
+
+        # Parse response (tab-delimited text format from SDA)
+        lines = response.text.strip().split("\n")
+        if len(lines) > 1:
+            # Skip header, get first data row
+            parts = lines[1].split("\t")
+            if len(parts) >= 2:
+                try:
+                    watertab_cm = float(parts[1])
+                    return watertab_cm
+                except (ValueError, IndexError):
+                    return None
+
+        return None
+
+    except Exception as e:
+        print(f"⚠️ SSURGO comonth query failed: {e}")
+        return None
+
+
 def detect_wetland_hydrology_from_ssurgo(watertab_depth_cm: Optional[float]) -> Dict:
     """
     Interpret SSURGO watertab field to determine wetland hydrology.

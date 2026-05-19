@@ -23,6 +23,7 @@ try:
     from wetland_features import (
         get_nlcd_vegetation_type,
         get_nhd_proximity,
+        get_ssurgo_water_table,
         detect_wetland_hydrology_from_ssurgo,
         combine_wetland_indicators
     )
@@ -2180,17 +2181,15 @@ with col_res:
                         st.session_state["debug_logs"].append(f"Has poor drainage component: {has_poor_drainage_component}")
 
                         # Water table: fetch from comonth table (seasonal representative depth in cm)
-                        # For now, we'll leave as None since comonth joins require different SDA syntax
-                        # TODO: Implement comonth query once we verify SDA syntax for month-based water table data
                         watertab_depth = None
                         try:
-                            # NOTE: This approach may require different SDA endpoint or syntax
-                            # comonth table has watertab_r (representative water table depth)
-                            # but joining to components has proven problematic with SDA API
-                            # Keeping as None for stability; can be enhanced later
-                            pass
-                        except Exception:
-                            watertab_depth = None
+                            watertab_depth = get_ssurgo_water_table(polygon_center_lat, polygon_center_lon)
+                            if watertab_depth:
+                                st.session_state["debug_logs"].append(f"✅ Water table depth: {watertab_depth:.1f} cm")
+                            else:
+                                st.session_state["debug_logs"].append("⚠️ Water table depth unavailable in SSURGO")
+                        except Exception as wt_err:
+                            st.session_state["debug_logs"].append(f"⚠️ Water table fetch failed: {wt_err}")
 
                         # Fetch NLCD vegetation with error logging
                         vegetation = None
