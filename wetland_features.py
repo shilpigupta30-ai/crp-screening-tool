@@ -175,72 +175,51 @@ def get_nhd_proximity(lat: float, lon: float, search_radius_km: float = 5.0) -> 
         return None
 
 
-def get_ssurgo_water_table(lat: float, lon: float) -> Optional[float]:
+def get_ssurgo_water_table(lat: float, lon: float, drainage_class: Optional[str] = None) -> Optional[float]:
     """
-    Fetch water table depth from SSURGO comonth data via SDA (Soil Data Access) API.
+    Estimate water table depth from SSURGO drainage class (fallback method).
+
+    For now uses drainage class as a proxy for water table depth until direct
+    comonth queries are fully operational.
 
     Returns:
-        Water table depth in cm (representative annual depth), or None if unavailable
+        Estimated water table depth in cm, or None if unavailable
 
-    Logic:
-    1. Query SDA for dominant soil component at coordinates
-    2. Fetch comonth table for that component (seasonal water table data)
-    3. Return representative (average) water table depth across months
+    NRCS standard interpretations:
+    - Very Poorly Drained: water table 0-15 cm
+    - Poorly Drained: water table 0-30 cm
+    - Somewhat Poorly Drained: water table 30-60 cm
+    - Moderately Well Drained: water table 60-100 cm
+    - Well Drained / Excessively Drained: water table > 100 cm
 
-    Source: NRCS Soil Data Access (SDA) API
+    Source: SSURGO drainage class field (established correlation with hydrology)
     """
     try:
-        # SDA REST API endpoint
-        url = "https://sdmdataaccess.nrcs.usda.gov/Tabular/SDMTabularService/post"
+        # If we have drainage class, use it to estimate water table
+        if drainage_class:
+            drainage_lower = str(drainage_class).lower()
 
-        # Query: Get comonth water table depths for dominant component at this location
-        # comonth.watertab_r = representative water table depth (cm) — most reliable single value
-        query = f"""
-        SELECT TOP 1
-            compname,
-            watertab_r
-        FROM
-            component c
-        INNER JOIN comonth cm ON c.cokey = cm.cokey
-        INNER JOIN SpatialVersion sv ON c.spatialversion_id = sv.spatialversion_id
-        WHERE
-            sv.spatialversionkey IN (
-                SELECT spatialversionkey FROM SpatialVersion
-                WHERE mukey IN (
-                    SELECT mukey FROM mapunit
-                    WHERE mukey = (
-                        SELECT mukey FROM gSSURGO
-                        WHERE ST_Contains(geom, ST_GeomFromText('POINT({lon} {lat})', 4326))
-                        LIMIT 1
-                    )
-                )
-            )
-        ORDER BY c.comppct_r DESC
-        """
+            # Very poor drainage → water table within 15 cm (strong wetland signal)
+            if "very poorly" in drainage_lower or "very poor" in drainage_lower:
+                return 10.0  # Estimate: 10 cm (strong signal)
 
-        params = {
-            "query": query.strip()
-        }
+            # Poorly drained → water table within 30 cm (strong wetland signal)
+            elif "poorly" in drainage_lower or "poor" in drainage_lower:
+                return 25.0  # Estimate: 25 cm (strong signal)
 
-        response = requests.post(url, data=params, timeout=15)
-        response.raise_for_status()
+            # Somewhat poorly drained → water table 30-60 cm (possible signal)
+            elif "somewhat poorly" in drainage_lower or "somewhat poor" in drainage_lower:
+                return 45.0  # Estimate: 45 cm (possible signal)
 
-        # Parse response (tab-delimited text format from SDA)
-        lines = response.text.strip().split("\n")
-        if len(lines) > 1:
-            # Skip header, get first data row
-            parts = lines[1].split("\t")
-            if len(parts) >= 2:
-                try:
-                    watertab_cm = float(parts[1])
-                    return watertab_cm
-                except (ValueError, IndexError):
-                    return None
+            # All other classes (well-drained, moderately well-drained) → no wetland hydrology signal
+            else:
+                return None
 
+        # If no drainage class provided, return None
         return None
 
     except Exception as e:
-        print(f"⚠️ SSURGO comonth query failed: {e}")
+        print(f"⚠️ Water table estimation failed: {e}")
         return None
 
 

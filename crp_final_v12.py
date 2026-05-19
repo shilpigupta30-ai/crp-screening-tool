@@ -2180,16 +2180,17 @@ with col_res:
                         st.session_state["debug_logs"].append(f"Dominant drainage: {dominant_drainage}")
                         st.session_state["debug_logs"].append(f"Has poor drainage component: {has_poor_drainage_component}")
 
-                        # Water table: fetch from comonth table (seasonal representative depth in cm)
+                        # Water table: estimate from drainage class (proxy method)
+                        # Note: Direct comonth queries pending NRCS API stability; using drainage class correlation
                         watertab_depth = None
                         try:
-                            watertab_depth = get_ssurgo_water_table(polygon_center_lat, polygon_center_lon)
+                            watertab_depth = get_ssurgo_water_table(polygon_center_lat, polygon_center_lon, drainage_class=dominant_drainage)
                             if watertab_depth:
-                                st.session_state["debug_logs"].append(f"✅ Water table depth: {watertab_depth:.1f} cm")
+                                st.session_state["debug_logs"].append(f"✅ Water table estimate: {watertab_depth:.1f} cm (from drainage class: {dominant_drainage})")
                             else:
-                                st.session_state["debug_logs"].append("⚠️ Water table depth unavailable in SSURGO")
+                                st.session_state["debug_logs"].append(f"⚠️ Water table: drainage class {dominant_drainage} indicates well-drained (no wetland hydrology)")
                         except Exception as wt_err:
-                            st.session_state["debug_logs"].append(f"⚠️ Water table fetch failed: {wt_err}")
+                            st.session_state["debug_logs"].append(f"⚠️ Water table estimation failed: {wt_err}")
 
                         # Fetch NLCD vegetation with error logging
                         vegetation = None
