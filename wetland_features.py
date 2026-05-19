@@ -199,17 +199,20 @@ def get_ssurgo_water_table(lat: float, lon: float, drainage_class: Optional[str]
         if drainage_class:
             drainage_lower = str(drainage_class).lower()
 
+            # Check from most specific to least specific
+
             # Very poor drainage → water table within 15 cm (strong wetland signal)
             if "very poorly" in drainage_lower or "very poor" in drainage_lower:
                 return 10.0  # Estimate: 10 cm (strong signal)
 
+            # Somewhat poorly drained → water table 30-60 cm (possible signal)
+            # Check this BEFORE plain "poorly" to avoid matching "poor" first
+            elif "somewhat poorly" in drainage_lower or "somewhat poor" in drainage_lower:
+                return 45.0  # Estimate: 45 cm (possible signal)
+
             # Poorly drained → water table within 30 cm (strong wetland signal)
             elif "poorly" in drainage_lower or "poor" in drainage_lower:
                 return 25.0  # Estimate: 25 cm (strong signal)
-
-            # Somewhat poorly drained → water table 30-60 cm (possible signal)
-            elif "somewhat poorly" in drainage_lower or "somewhat poor" in drainage_lower:
-                return 45.0  # Estimate: 45 cm (possible signal)
 
             # All other classes (well-drained, moderately well-drained) → no wetland hydrology signal
             else:
