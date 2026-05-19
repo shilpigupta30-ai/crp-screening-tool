@@ -1309,13 +1309,14 @@ def show_farmer_view(analysis_results, r_val, state_label, ls_factor=None, ls_so
 
         st.markdown("---")
 
-        # Wetland Status
+        # Wetland Status - flag potential indicators, not definitive determination
         hydric_detected = (df["Hydric"] == "Yes").any()
         if hydric_detected:
             st.markdown(
                 '<div style="background:#E1F5FE;border-left:4px solid #0277BD;padding:15px;border-radius:4px;margin-bottom:15px;">'
-                '<h3 style="color:#0277BD;margin:0;">💧 Wetland Soils Detected</h3>'
-                '<p style="margin:10px 0 0 0;color:#333;">Your field has hydric soils, which may be eligible for wetland restoration practices.</p>'
+                '<h3 style="color:#0277BD;margin:0;">💧 Potential Wetland Indicator: Hydric Soils</h3>'
+                '<p style="margin:10px 0 0 0;color:#333;">Your field contains hydric soils, which may indicate wetland potential. '
+                '<strong>NRCS field verification is required</strong> to make an official wetland determination.</p>'
                 '</div>',
                 unsafe_allow_html=True
             )
@@ -2270,24 +2271,25 @@ with col_res:
                         f'<div style="background-color:{bg_color};border-left:5px solid {border_color};'
                         f'padding:10px;border-radius:5px;margin-bottom:10px;'
                         f'font-size:11px;color:#BAE6FD;line-height:1.4;">'
-                        f'<b>{emoji} {assessment["wetland_type"]}</b><br>'
-                        f'<i>Confidence: {assessment["confidence"]}</i><br><br>'
+                        f'<b>{emoji} Potential Wetland Indicators Detected</b><br>'
+                        f'<i>Indicator Strength: {assessment["confidence"]}</i><br><br>'
                         f'{indicators_display}'
-                        f'<b>Recommendation:</b> {assessment["recommendation"]}'
+                        f'<b>Next Step:</b> Contact your local NRCS office for official wetland determination. '
+                        f'An NRCS conservationist will conduct a field visit to verify wetland status per Federal Interagency Delineation Manual standards.'
                         f'</div>',
                         unsafe_allow_html=True
                     )
 
                 elif has_hydric:
-                    # Fallback to original simple hydric indicator if wetland features unavailable
+                    # Fallback to simple hydric indicator if detailed wetland features unavailable
                     st.markdown(
                         f'<div style="background-color:#0d3349;border-left:5px solid #38BDF8;'
                         f'padding:10px;border-radius:5px;margin-bottom:10px;'
                         f'font-size:11px;color:#BAE6FD;line-height:1.4;">'
-                        f'<b>💧 Wetland Soils Detected</b><br>'
+                        f'<b>💧 Potential Wetland Indicator: Hydric Soils</b><br>'
                         f'{hydric_pct}% of soil components classified as hydric (SSURGO). '
-                        f'Wetland practices CP23, CP27/CP28 may be applicable — '
-                        f'confirm with NRCS wetland determination.'
+                        f'This indicator suggests potential wetland. '
+                        f'Contact your local NRCS office for official wetland determination and field verification.'
                         f'</div>',
                         unsafe_allow_html=True
                     )
