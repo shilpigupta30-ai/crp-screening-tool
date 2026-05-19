@@ -1312,18 +1312,32 @@ def show_farmer_view(analysis_results, r_val, state_label, ls_factor=None, ls_so
         # Wetland Status - flag potential indicators, not definitive determination
         st.markdown("**💧 Wetland Indicator Checklist:**")
 
-        # Build simple wetland indicators table for farmer view
-        wetland_indicators = {
-            "Hydric Soils": "✅ Yes" if (df["Hydric"] == "Yes").any() else "❌ No",
-            "Wetland Vegetation": "⚠️ Not assessed",  # Would need detailed wetland features
-            "High Water Table": "⚠️ Not assessed",
-            "Water Body Nearby": "⚠️ Not assessed"
-        }
+        # Build simple wetland indicators table for farmer view using actual assessment data
+        hydric_detected = (df["Hydric"] == "Yes").any()
+
+        # Check if detailed wetland assessment is available
+        assessment = st.session_state.get("wetland_assessment")
+
+        if assessment:
+            # Use actual detected indicators
+            wetland_indicators = {
+                "Hydric Soils": "✅ Yes" if assessment["indicators"]["hydric_soils"] else "❌ No",
+                "Wetland Vegetation": "✅ Yes" if assessment["indicators"]["wetland_vegetation"] else "❌ No",
+                "High Water Table": "✅ Yes" if assessment["indicators"]["hydrology_ssurgo"] else "❌ No",
+                "Water Body Nearby": "✅ Yes" if assessment["indicators"]["hydrology_nhd"] else "❌ No"
+            }
+        else:
+            # Fallback if detailed assessment not available
+            wetland_indicators = {
+                "Hydric Soils": "✅ Yes" if hydric_detected else "❌ No",
+                "Wetland Vegetation": "⚠️ Not assessed",
+                "High Water Table": "⚠️ Not assessed",
+                "Water Body Nearby": "⚠️ Not assessed"
+            }
 
         wetland_df = pd.DataFrame(list(wetland_indicators.items()), columns=["Indicator", "Status"])
         st.dataframe(wetland_df, use_container_width=True, hide_index=True)
 
-        hydric_detected = (df["Hydric"] == "Yes").any()
         if hydric_detected:
             st.markdown(
                 '<div style="background:#E1F5FE;border-left:4px solid #0277BD;padding:15px;border-radius:4px;margin-bottom:15px;">'
