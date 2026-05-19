@@ -2323,12 +2323,6 @@ with col_res:
                     st.markdown("**📊 Detailed Wetland Indicators Assessment:**")
 
                     # Build detailed evidence for each indicator
-                    veg_evidence = "—"
-                    if vegetation and assessment["indicators"]["wetland_vegetation"]:
-                        nlcd_class = vegetation.get("nlcd_class", "N/A")
-                        veg_type = vegetation.get("vegetation_type", "Wetland vegetation")
-                        veg_evidence = f"NLCD Class {nlcd_class}: {veg_type}"
-
                     hydrology_nhd_evidence = "—"
                     if nhd_proximity and assessment["indicators"]["hydrology_nhd"]:
                         wetland_type = nhd_proximity.get("wetland_type", "Water body")
@@ -2336,19 +2330,31 @@ with col_res:
                         signal = nhd_proximity.get("hydrology_signal", "")
                         hydrology_nhd_evidence = f"{wetland_type} (NWI: {nwi_attr}) - {signal} signal"
 
+                    # Build table with smart NLCD display
+                    # Show NLCD only when detected as "Yes" (vegetation present)
+                    # Omit when "No" (not actionable for conservationists; field visits verify vegetation)
                     wetland_table_data = [
                         {
                             "Indicator": "Hydric Soils",
                             "Detected": "✅ Yes" if assessment["indicators"]["hydric_soils"] else "❌ No",
                             "Evidence": "SSURGO hydricrating indicates wetland-forming soils (hydric rating present)",
                             "Confidence": "High" if assessment["indicators"]["hydric_soils"] else "—"
-                        },
-                        {
-                            "Indicator": "Hydrophytic Vegetation",
-                            "Detected": "✅ Yes" if assessment["indicators"]["wetland_vegetation"] else "❌ No",
+                        }
+                    ]
+
+                    # Only include NLCD vegetation indicator when positive result
+                    if vegetation and assessment["indicators"]["wetland_vegetation"]:
+                        nlcd_class = vegetation.get("nlcd_class", "N/A")
+                        veg_type = vegetation.get("vegetation_type", "Wetland vegetation")
+                        veg_evidence = f"NLCD Class {nlcd_class}: {veg_type}"
+                        wetland_table_data.append({
+                            "Indicator": "Hydrophytic Vegetation (NLCD)",
+                            "Detected": "✅ Yes",
                             "Evidence": veg_evidence,
-                            "Confidence": "High" if assessment["indicators"]["wetland_vegetation"] else "—"
-                        },
+                            "Confidence": "High"
+                        })
+
+                    wetland_table_data.extend([
                         {
                             "Indicator": "Wetland Hydrology (Water Table)",
                             "Detected": "✅ Yes" if assessment["indicators"]["hydrology_ssurgo"] else "❌ No",
@@ -2361,7 +2367,7 @@ with col_res:
                             "Evidence": hydrology_nhd_evidence if hydrology_nhd_evidence != "—" else "NHD/NWI database shows no mapped wetland within 5km",
                             "Confidence": "High" if assessment["indicators"]["hydrology_nhd"] else "—"
                         }
-                    ]
+                    ])
 
                     wetland_table_df = pd.DataFrame(wetland_table_data)
                     st.dataframe(wetland_table_df, use_container_width=True, hide_index=True)
