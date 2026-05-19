@@ -1310,16 +1310,32 @@ def show_farmer_view(analysis_results, r_val, state_label, ls_factor=None, ls_so
         st.markdown("---")
 
         # Wetland Status - flag potential indicators, not definitive determination
+        st.markdown("**💧 Wetland Indicator Checklist:**")
+
+        # Build simple wetland indicators table for farmer view
+        wetland_indicators = {
+            "Hydric Soils": "✅ Yes" if (df["Hydric"] == "Yes").any() else "❌ No",
+            "Wetland Vegetation": "⚠️ Not assessed",  # Would need detailed wetland features
+            "High Water Table": "⚠️ Not assessed",
+            "Water Body Nearby": "⚠️ Not assessed"
+        }
+
+        wetland_df = pd.DataFrame(list(wetland_indicators.items()), columns=["Indicator", "Status"])
+        st.dataframe(wetland_df, use_container_width=True, hide_index=True)
+
         hydric_detected = (df["Hydric"] == "Yes").any()
         if hydric_detected:
             st.markdown(
                 '<div style="background:#E1F5FE;border-left:4px solid #0277BD;padding:15px;border-radius:4px;margin-bottom:15px;">'
-                '<h3 style="color:#0277BD;margin:0;">💧 Potential Wetland Indicator: Hydric Soils</h3>'
-                '<p style="margin:10px 0 0 0;color:#333;">Your field contains hydric soils, which may indicate wetland potential. '
-                '<strong>NRCS field verification is required</strong> to make an official wetland determination.</p>'
+                '<h3 style="color:#0277BD;margin:0;">💧 Potential Wetland Indicator Detected</h3>'
+                '<p style="margin:10px 0 0 0;color:#333;">Your field contains hydric soils (wetland-forming soils). '
+                '<strong>NRCS field verification is required</strong> to make an official wetland determination. '
+                'Contact your local NRCS office to schedule a wetland delineation.</p>'
                 '</div>',
                 unsafe_allow_html=True
             )
+        else:
+            st.info("ℹ️ No hydric soils detected in SSURGO database. However, a site visit may reveal other wetland indicators.")
 
     # Next Steps
     st.markdown(
@@ -2278,6 +2294,47 @@ with col_res:
                         f'An NRCS conservationist will conduct a field visit to verify wetland status per Federal Interagency Delineation Manual standards.'
                         f'</div>',
                         unsafe_allow_html=True
+                    )
+
+                    # Add detailed wetland indicators table for conservationists
+                    st.markdown("**📊 Detailed Wetland Indicators Assessment:**")
+
+                    wetland_table_data = [
+                        {
+                            "Indicator": "Hydric Soils",
+                            "Detected": "✅ Yes" if assessment["indicators"]["hydric_soils"] else "❌ No",
+                            "Evidence": "SSURGO hydricrating field indicates wetland-forming soils",
+                            "Confidence": "High"
+                        },
+                        {
+                            "Indicator": "Hydrophytic Vegetation",
+                            "Detected": "✅ Yes" if assessment["indicators"]["wetland_vegetation"] else "❌ No",
+                            "Evidence": f"NLCD {vegetation.get('vegetation_type', 'wetland vegetation') if vegetation else 'N/A'}",
+                            "Confidence": "High" if assessment["indicators"]["wetland_vegetation"] else "—"
+                        },
+                        {
+                            "Indicator": "Wetland Hydrology (Water Table)",
+                            "Detected": "✅ Yes" if assessment["indicators"]["hydrology_ssurgo"] else "❌ No",
+                            "Evidence": "SSURGO comonth indicates shallow water table (≤30cm)",
+                            "Confidence": "High" if assessment["indicators"]["hydrology_ssurgo"] else "—"
+                        },
+                        {
+                            "Indicator": "Proximity to Water Body",
+                            "Detected": "✅ Yes" if assessment["indicators"]["hydrology_nhd"] else "❌ No",
+                            "Evidence": "NHD database within 5km search radius",
+                            "Confidence": "High" if assessment["indicators"]["hydrology_nhd"] else "—"
+                        }
+                    ]
+
+                    wetland_table_df = pd.DataFrame(wetland_table_data)
+                    st.dataframe(wetland_table_df, use_container_width=True, hide_index=True)
+
+                    st.info(
+                        "📋 **For Official Determination:**\n\n"
+                        "Per Federal Interagency Wetlands Delineation Manual, official determination requires:\n"
+                        "1. All three primary indicators (hydric soils, hydrophytic vegetation, wetland hydrology) OR\n"
+                        "2. Two primary indicators in certain combinations\n\n"
+                        "Schedule NRCS field visit to verify indicators and document findings."
                     )
 
                 elif has_hydric:
