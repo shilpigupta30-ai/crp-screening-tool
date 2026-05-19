@@ -790,11 +790,11 @@ with st.sidebar:
     conservationist_mode = st.checkbox(
         "🔐 NRCS Conservationist Mode",
         value=False,
-        help="Enable advanced features: field verification, AD1026 pre-fill, technical details"
+        help="Enable advanced features: field verification, NRCS-CPA-026 pre-fill, technical details"
     )
 
     if conservationist_mode:
-        st.info("👨‍🌾 **Conservationist Workspace Enabled**\n\nYou now have access to:\n- Field data input\n- AD1026 pre-fill\n- Technical details\n- Export options")
+        st.info("👨‍🌾 **Conservationist Workspace Enabled**\n\nYou now have access to:\n- Field data input\n- NRCS-CPA-026 pre-fill\n- Technical details\n- Export options")
     else:
         st.info("👨‍🚜 **Farmer-Friendly Mode**\n\nSimple results with next steps.\nCall NRCS for official determination.")
 
@@ -952,7 +952,7 @@ def generate_cpa026_pdf(r_val, state_label, ls_factor, ls_source, df, ei_max, ei
     Generate PDF with pre-filled NRCS-CPA-026 form data.
 
     Form: NRCS-CPA-026 "Highly Erodible Land and Wetland Conservation Determination"
-    This is the official NRCS form for documenting HEL determinations (not the AD-1026 FSA form).
+    This is the official NRCS form for documenting HEL determinations with RUSLE2 parameters.
 
     Args:
         r_val: R-factor value
@@ -1383,7 +1383,7 @@ def show_farmer_view(analysis_results, r_val, state_label, ls_factor=None, ls_so
 
 def show_conservationist_view(analysis_results, r_val, state_label, ls_factor=None, ls_source=None, df=None):
     """
-    Display conservationist-focused results: Technical details + Field verification + AD1026
+    Display conservationist-focused results: Technical details + Field verification + NRCS-CPA-026 form
 
     Args:
         analysis_results: SSURGO soil analysis results
@@ -1395,7 +1395,7 @@ def show_conservationist_view(analysis_results, r_val, state_label, ls_factor=No
     """
     # Create tabs for different sections
     tab1, tab2, tab3, tab4, tab5 = st.tabs(
-        ["📊 Results", "🔧 Field Verification", "📋 Components", "📄 AD1026", "⚙️ Technical"]
+        ["📊 Results", "🔧 Field Verification", "📋 Components", "📄 NRCS-CPA-026 Form", "⚙️ Technical"]
     )
 
     with tab1:
@@ -1638,7 +1638,7 @@ def show_conservationist_view(analysis_results, r_val, state_label, ls_factor=No
 
     with tab4:
         st.subheader("📋 NRCS-CPA-026 Form (Pre-filled)")
-        st.info("✅ **Download pre-filled NRCS-CPA-026** form with tool-calculated RUSLE2 parameters. This is the NRCS HEL determination form (not the FSA AD-1026 certification form).")
+        st.info("✅ **Download pre-filled NRCS-CPA-026** form with tool-calculated RUSLE2 parameters. This official NRCS form documents HEL determinations and is ready for conservationist field verification and signature.")
 
         if df is not None and not df.empty:
             # Display form data preview
@@ -1709,8 +1709,8 @@ def show_conservationist_view(analysis_results, r_val, state_label, ls_factor=No
             # Form information
             st.markdown("**📋 About This Form:**")
             st.markdown("""
-            - **NRCS-CPA-026:** Official NRCS form for documenting HEL/Wetland determinations
-            - **Purpose:** Used by NRCS to document findings; producer files AD-1026 (FSA) separately
+            - **NRCS-CPA-026:** Official NRCS form for documenting HEL/Wetland determinations with RUSLE2 analysis
+            - **Purpose:** Used by NRCS conservationists to document technical findings and determinations
             - **Status:** This PDF is pre-filled with screening calculations (NOT official until NRCS signs)
             - **Next Step:** Bring this to your local NRCS office for field verification and official signature
             """)
@@ -1865,21 +1865,21 @@ with col_res:
                 '''
                 <div style="background:#E8F5E9;border-left:4px solid #388E3C;padding:20px;border-radius:8px;margin-bottom:20px;">
                 <h3 style="color:#2E7D32;margin-top:0;">👨‍🌾 Conservationist Workspace</h3>
-                <p style="color:#333;margin:10px 0;">Verify field data, generate AD1026 forms, and access technical RUSLE2 parameters.</p>
+                <p style="color:#333;margin:10px 0;">Verify field data, generate NRCS-CPA-026 forms, and access technical RUSLE2 parameters.</p>
 
                 <h4 style="color:#2E7D32;">📋 Workflow:</h4>
                 <ol style="color:#333;margin-left:20px;">
                     <li><strong>Draw Polygon or Enter Coordinates</strong> — Define field boundary (⚡ polygon auto-analyzes)</li>
                     <li><strong>View Results Tab</strong> — Check automated HEL status and EI metrics</li>
                     <li><strong>Field Verification Tab</strong> — Enter measured slope length & steepness from site visit</li>
-                    <li><strong>AD1026 Tab</strong> — Download pre-filled form for FSA submission</li>
+                    <li><strong>NRCS-CPA-026 Form Tab</strong> — Download pre-filled HEL determination form</li>
                     <li><strong>Technical Tab</strong> — Review R, K, LS, T factors and uncertainty flags</li>
                 </ol>
 
                 <h4 style="color:#2E7D32;">🔍 Key Features:</h4>
                 <ul style="color:#333;margin-left:20px;">
                     <li><strong>Field Data Override</strong> — Compare automated vs. measured slopes</li>
-                    <li><strong>Form Integration</strong> — AD1026 pre-fill reduces paperwork by 30+ min</li>
+                    <li><strong>Form Integration</strong> — NRCS-CPA-026 pre-fill with RUSLE2 data reduces paperwork by 30+ min</li>
                     <li><strong>RUSLE2 Transparency</strong> — See all calculation parameters and sources</li>
                 </ul>
                 </div>
